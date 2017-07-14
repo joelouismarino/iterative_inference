@@ -11,7 +11,7 @@ class LatentVariableModel(nn.Module):
         super(LatentVariableModel, self).__init__()
 
         # define the basic function blocks
-
+        a = 5
 
     def forward(self):
         pass
