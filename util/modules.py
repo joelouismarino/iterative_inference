@@ -7,7 +7,7 @@ from distributions import DiagonalGaussian
 
 class Dense(nn.Module):
 
-    """Fully-connected layer with batch normalization, non-linearity, and weight normalization."""
+    """Fully-connected (dense) layer with optional batch normalization, non-linearity, and weight normalization."""
 
     def __init__(self, n_in, n_out, non_linearity=None, batch_norm=False, weight_norm=False):
         super(Dense, self).__init__()
@@ -112,11 +112,15 @@ class LatentLevel(object):
         self.batch_size = batch_size
         self.n_latent = n_latent
 
-        self.posterior = DiagonalGaussian(Variable(torch.zeros(self.batch_size, self.n_latent)), Variable(torch.zeros(self.batch_size, self.n_latent)))
+        self.posterior = None
         self.prior = None
+        self.set_posterior()
 
         self.encoder = MLP(**encoder_arch)
         self.decoder = MLP(**decoder_arch)
+
+        self.det_enc = None
+        self.det_dec = None
 
         if n_det_enc > 0:
             self.det_enc = nn.Linear(encoder_arch['n_units'], n_det_enc)
@@ -124,22 +128,26 @@ class LatentLevel(object):
         if n_det_dec > 0:
             self.det_dec = nn.Linear()
 
-    def reset_posterior(self):
-        self.posterior = DiagonalGaussian(Variable(torch.zeros(self.batch_size, self.n_latent)), Variable(torch.zeros(self.batch_size, self.n_latent)))
+    def set_posterior(self, mean=None, log_var=None):
+        if mean is None and log_var is None:
+            mean = Variable(torch.zeros(self.batch_size, self.n_latent))
+            log_var = Variable(torch.zeros(self.batch_size, self.n_latent))
+        self.posterior = DiagonalGaussian(mean, log_var)
 
     def up(self, ):
         pass
 
     def down(self, input, generative=False):
 
-
-
         if generative:
             sample = self.prior.sample()
         else:
             sample = self.posterior.sample()
-
-
+        
+        det = None
+        if self.det_dec:
+            det = self.det_dec(input)
+            sample = torch.cat((sample, det), axis=1)
 
         return self.decoder(sample)
 
