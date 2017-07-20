@@ -7,7 +7,10 @@ import tarfile
 import numpy as np
 from scipy.io import loadmat
 
-# todo: add labels for latent visualization
+"""Function to download a variety of benchmark image datasets."""
+
+# todo: add labels
+# todo: add file iterators for ImageNet
 
 def load_data(dataset, data_path):
     print 'Loading data...'

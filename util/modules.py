@@ -112,39 +112,38 @@ class LatentLevel(object):
         self.batch_size = batch_size
         self.n_latent = n_latent
 
-        self.posterior = None
-        self.prior = None
-        self.set_posterior()
-
         self.encoder = MLP(**encoder_arch)
         self.decoder = MLP(**decoder_arch)
+
+        self.prior = None
+        self.posterior = DiagonalGaussian(Variable(torch.zeros(self.batch_size, self.n_latent)),
+                                          Variable(torch.zeros(self.batch_size, self.n_latent)))
+
+        self.prior_mean = nn.Linear(, self.n_latent)
+        self.prior_log_var = nn.Linear(, self.n_latent)
+        self.posterior_mean = nn.Linear(encoder_arch['n_units'], self.n_latent)
+        self.posterior_log_var = nn.Linear(encoder_arch['n_units'], self.n_latent)
 
         self.det_enc = None
         self.det_dec = None
 
         if n_det_enc > 0:
             self.det_enc = nn.Linear(encoder_arch['n_units'], n_det_enc)
-
         if n_det_dec > 0:
-            self.det_dec = nn.Linear()
+            self.det_dec = nn.Linear(, decoder_arch['n_units'])
 
-    def set_posterior(self, mean=None, log_var=None):
-        if mean is None and log_var is None:
-            mean = Variable(torch.zeros(self.batch_size, self.n_latent))
-            log_var = Variable(torch.zeros(self.batch_size, self.n_latent))
-        self.posterior = DiagonalGaussian(mean, log_var)
 
-    def up(self, ):
-        pass
+    def up(self, input):
+
+        encoded = self.encoder(input)
+        self.posterior = DiagonalGaussian(self.posterior_mean(encoded), self.posterior_log_var(encoded))
+
 
     def down(self, input, generative=False):
 
-        if generative:
-            sample = self.prior.sample()
-        else:
-            sample = self.posterior.sample()
-        
-        det = None
+        self.prior = DiagonalGaussian(self.prior_mean(input), self.prior_log_var(input))
+        sample = self.prior.sample() if generative else self.posterior.sample()
+
         if self.det_dec:
             det = self.det_dec(input)
             sample = torch.cat((sample, det), axis=1)
