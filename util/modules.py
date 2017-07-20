@@ -43,13 +43,13 @@ class Dense(nn.Module):
         return output
 
 
-class MLP(nn.Module):
+class MultiLayerPerceptron(nn.Module):
 
     """Multi-layered perceptron."""
 
-    def __init__(self, n_in, n_units, n_out, n_layers, non_linearity=None, connection_type='sequential', batch_norm=False, weight_norm=False):
+    def __init__(self, n_in, n_units, n_layers, non_linearity=None, connection_type='sequential', batch_norm=False, weight_norm=False):
 
-        super(MLP, self).__init__()
+        super(MultiLayerPerceptron, self).__init__()
         assert connection_type in ['sequential', 'residual', 'highway', 'concat_input', 'concat'], 'Connection type not found.'
         self.connection_type = connection_type
         self.layers = nn.ModuleList([])
@@ -105,59 +105,120 @@ class MLP(nn.Module):
         return input
 
 
+class GaussianVariable(object):
+
+    def __init__(self, batch_size, n_variables, n_up_input, n_down_input, update_form):
+
+        self.batch_size = batch_size
+        self.n_variables = n_variables
+        self.update_form = update_form
+        assert update_type in ['direct', 'highway'], 'Variable update type not found.'
+
+        self.prior_mean = Dense(n_down_input, self.n_variables)
+        self.prior_log_var = Dense(n_down_input, self.n_variables)
+        self.posterior_mean = Dense(n_up_input, self.n_variables)
+        self.posterior_log_var = Dense(n_up_input, self.n_variables)
+
+        if self.update_form == 'highway':
+            self.posterior_mean_gate = Dense(n_up_input, self.n_variables, 'sigmoid')
+            self.posterior_log_var_gate = Dense(n_up_input, self.n_variables, 'sigmoid')
+
+        self.prior = self.init_dist()
+        self.posterior = self.init_dist()
+
+    def init_dist(self):
+        return DiagonalGaussian(Variable(torch.zeros(self.batch_size, self.n_variables)),
+                                Variable(torch.zeros(self.batch_size, self.n_variables)))
+
+    def encode(self, input):
+        mean = self.posterior_mean(input)
+        log_var = self.posterior_log_var(input)
+
+        if self.update_form == 'highway':
+            mean_gate = self.posterior_mean_gate(input)
+            log_var_gate = self.posterior_log_var_gate(input)
+            mean = mean_gate * self.posterior.mean + (1 - mean_gate) * mean
+            log_var = log_var_gate * self.posterior.log_var + (1 - log_var_gate) * log_var
+
+        self.posterior.mean, self.posterior.log_var = mean, log_var
+        return self.posterior.sample()
+
+    def decode(self, input, generate=False):
+        mean = self.prior_mean(input)
+        log_var = self.prior_log_var(input)
+        self.prior.mean, self.prior.log_var = mean, log_var
+        sample = self.prior.sample() if generate else self.posterior.sample()
+        return sample
+
+    def KL_divergence(self):
+        return self.posterior.log_prob(self.posterior.sample()) - self.prior.log_prob(self.posterior.sample())
+
+    def cuda(self, device_id=0):
+        pass
+
+
 class LatentLevel(object):
 
-    def __init__(self, batch_size, encoder_arch, decoder_arch, n_latent, n_det_enc, n_det_dec):
+    def __init__(self, batch_size, encoder_arch, decoder_arch, n_latent, n_det_enc, n_det_dec, encoding_form, variable_update_form):
 
         self.batch_size = batch_size
         self.n_latent = n_latent
+        self.encoding_form = encoding_form
 
-        self.encoder = MLP(**encoder_arch)
-        self.decoder = MLP(**decoder_arch)
+        self.encoder = MultiLayerPerceptron(**encoder_arch)
+        self.decoder = MultiLayerPerceptron(**decoder_arch)
 
-        self.prior = None
-        self.posterior = DiagonalGaussian(Variable(torch.zeros(self.batch_size, self.n_latent)),
-                                          Variable(torch.zeros(self.batch_size, self.n_latent)))
+        self.latent = GaussianVariable(self.batch_size, self.n_latent, encoder_arch['n_units'], , variable_update_form)
 
-        self.prior_mean = nn.Linear(, self.n_latent)
-        self.prior_log_var = nn.Linear(, self.n_latent)
-        self.posterior_mean = nn.Linear(encoder_arch['n_units'], self.n_latent)
-        self.posterior_log_var = nn.Linear(encoder_arch['n_units'], self.n_latent)
+        self.deterministic_encoder = Dense(encoder_arch['n_units'], n_det_enc) if n_det_enc > 0 else None
+        self.deterministic_decoder = Dense(, decoder_arch['n_units']) if n_det_dec > 0 else None
 
-        self.det_enc = None
-        self.det_dec = None
+    def get_encoding(self, input_output):
+        encoding = None
+        sample = self.latent.posterior.sample()
+        if 'posterior' in self.encoding_form and input_output == 'output':
+            output = sample if encoding is None else torch.cat((encoding, sample), axis=1)
+        if 'prior' in self.encoding_form and :
+            output = self.latent.prior.mean if output is None else torch.cat((output, self.latent.prior.mean), axis=1)
+        if 'error' in self.output_form:
+            error = sample - self.latent.prior.mean
+            output = error if output is None else torch.cat((output, error), axis=1)
+        if 'norm_error' in self.output_form:
+            norm_error = (sample - self.latent.prior.mean) / torch.exp(self.latent.prior.log_var)
+            output = norm_error if output is None else torch.cat((output, norm_error), axis=1)
+        return output
+    
 
-        if n_det_enc > 0:
-            self.det_enc = nn.Linear(encoder_arch['n_units'], n_det_enc)
-        if n_det_dec > 0:
-            self.det_dec = nn.Linear(, decoder_arch['n_units'])
-
-
-    def up(self, input):
-
+    def encode(self, input):
+        input = torch.cat((input, self.get_output(self.latent.posterior.sample())), axis=1)
         encoded = self.encoder(input)
-        self.posterior = DiagonalGaussian(self.posterior_mean(encoded), self.posterior_log_var(encoded))
+        sample = self.latent.encode(encoded)
+        output = self.get_output(sample)
+
+        if self.deterministic_encoder:
+            det = self.deteterministic_encoder(encoded)
+            output = torch.cat((det, output), axis=1)
+
+        return output
 
 
-    def down(self, input, generative=False):
+    def decode(self, input, generate=False):
+        sample = self.latent.decode(input, generate=generate)
 
-        self.prior = DiagonalGaussian(self.prior_mean(input), self.prior_log_var(input))
-        sample = self.prior.sample() if generative else self.posterior.sample()
-
-        if self.det_dec:
-            det = self.det_dec(input)
+        if self.deterministic_decoder:
+            det = self.deterministic_decoder(input)
             sample = torch.cat((sample, det), axis=1)
 
         return self.decoder(sample)
 
 
+    def cuda(self, device_id=0):
+        # place all modules on the GPU
+        self.encoder.cuda(device_id)
+        self.decoder.cuda(device_id)
+        self.latent.cuda(device_id)
+        self.deterministic_encoder.cuda(device_id)
+        self.deterministic_decoder.cuda(device_id)
 
 
 
-
-
-
-
-
-def temp(a, b=1):
-    return a + b
