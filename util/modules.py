@@ -42,7 +42,7 @@ class Dense(nn.Module):
             output = self.non_linearity(output)
         return output
 
-
+# todo: incorporate dropout into MLP
 class MultiLayerPerceptron(nn.Module):
 
     """Multi-layered perceptron."""
@@ -104,15 +104,14 @@ class MultiLayerPerceptron(nn.Module):
 
         return input
 
-
 class GaussianVariable(object):
 
     def __init__(self, batch_size, n_variables, n_input, update_form):
 
         self.batch_size = batch_size
         self.n_variables = n_variables
+        assert update_form in ['direct', 'highway'], 'Variable update type not found.'
         self.update_form = update_form
-        assert update_type in ['direct', 'highway'], 'Variable update type not found.'
 
         self.prior_mean = Dense(n_input[1], self.n_variables)
         self.prior_log_var = Dense(n_input[1], self.n_variables)
@@ -120,8 +119,8 @@ class GaussianVariable(object):
         self.posterior_log_var = Dense(n_input[0], self.n_variables)
 
         if self.update_form == 'highway':
-            self.posterior_mean_gate = Dense(n_up_input, self.n_variables, 'sigmoid')
-            self.posterior_log_var_gate = Dense(n_up_input, self.n_variables, 'sigmoid')
+            self.posterior_mean_gate = Dense(n_input[0], self.n_variables, 'sigmoid')
+            self.posterior_log_var_gate = Dense(n_input[0], self.n_variables, 'sigmoid')
 
         self.prior = self.init_dist()
         self.posterior = self.init_dist()
@@ -152,13 +151,26 @@ class GaussianVariable(object):
         return self.posterior.sample() - self.prior.mean
 
     def norm_error(self):
-        return self.error() / torch.exp(self.prior.log_var)
+        return self.error() / (torch.exp(self.prior.log_var) + 1e-7)
 
     def KL_divergence(self):
         return self.posterior.log_prob(self.posterior.sample()) - self.prior.log_prob(self.posterior.sample())
 
     def reset(self):
-        self.posterior.reset()
+        self.reset_mean()
+        self.reset_log_var()
+
+    def reset_mean(self):
+        self.posterior.reset_mean()
+
+    def reset_log_var(self):
+        self.posterior.reset_log_var()
+
+    def trainable_mean(self, trainable=True):
+        self.posterior.mean_trainable(trainable)
+
+    def trainable_log_var(self, trainable=True):
+        self.posterior.log_var_trainable(trainable)
 
     def cuda(self, device_id=0):
         # place all modules on the GPU
@@ -172,6 +184,17 @@ class GaussianVariable(object):
         self.prior.cuda(device_id)
         self.posterior.cuda(device_id)
 
+    def parameters(self):
+        pass
+
+    def encoder_parameters(self):
+        pass
+
+    def decoder_parameters(self):
+        pass
+
+    def state_parameters(self):
+        return self.posterior.state_parameters()
 
 class LatentLevel(object):
 
@@ -216,6 +239,9 @@ class LatentLevel(object):
             sample = torch.cat((sample, det), axis=1)
         return self.decoder(sample)
 
+    def KL_divergence(self):
+        return self.latent.KL_divergence()
+
     def reset(self):
         self.latent.reset()
 
@@ -227,5 +253,14 @@ class LatentLevel(object):
         self.deterministic_encoder.cuda(device_id)
         self.deterministic_decoder.cuda(device_id)
 
+    def parameters(self):
+        pass
 
+    def encoder_parameters(self):
+        pass
 
+    def decoder_parameters(self):
+        pass
+
+    def state_parameters(self):
+        return self.latent.state_parameters()

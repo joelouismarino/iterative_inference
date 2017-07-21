@@ -13,6 +13,9 @@ from scipy.io import loadmat
 # todo: add file iterators for ImageNet
 
 def load_data(dataset, data_path):
+
+    assert os.path.exists(data_path), 'Data path not found. Please specify a valid path.'
+
     print 'Loading data...'
     train = val = None
     train_labels = val_labels = None
