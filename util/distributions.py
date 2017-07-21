@@ -25,6 +25,17 @@ class DiagonalGaussian(object):
             sample = self.sample()
         return -0.5 * (np.log(2 * np.pi) + self.log_var + (sample - self.mean)**2 / torch.exp(self.log_var))
 
+    def reset(self):
+        self.mean.data.fill_(0.)
+        self.log_var.data.fill_(0.)
+        self.sample = None
+
+    def mean_trainable(self, trainable=True):
+        self.mean.requires_grad = trainable
+
+    def log_var_trainable(self, trainable=True):
+        self.log_var.requires_grad = trainable
+
     def cuda(self, device_id):
         self.mean.cuda()
         self.log_var.cuda()
