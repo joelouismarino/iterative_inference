@@ -154,7 +154,16 @@ class GaussianVariable(object):
         return self.posterior.log_prob(self.posterior.sample()) - self.prior.log_prob(self.posterior.sample())
 
     def cuda(self, device_id=0):
-        pass
+        # place all modules on the GPU
+        self.prior_mean.cuda(device_id)
+        self.prior_log_var.cuda(device_id)
+        self.posterior_mean.cuda(device_id)
+        self.posterior_log_var.cuda(device_id)
+        if self.update_form == 'highway':
+            self.posterior_mean_gate.cuda(device_id)
+            self.posterior_log_var_gate.cuda(device_id)
+        self.prior.cuda(device_id)
+        self.posterior.cuda(device_id)
 
 
 class LatentLevel(object):
@@ -173,24 +182,23 @@ class LatentLevel(object):
         self.deterministic_encoder = Dense(encoder_arch['n_units'], n_det_enc) if n_det_enc > 0 else None
         self.deterministic_decoder = Dense(, decoder_arch['n_units']) if n_det_dec > 0 else None
 
-    def get_encoding(self, input_output):
+    def get_encoding(self, in_out):
         encoding = None
         sample = self.latent.posterior.sample()
-        if 'posterior' in self.encoding_form and input_output == 'output':
-            output = sample if encoding is None else torch.cat((encoding, sample), axis=1)
-        if 'prior' in self.encoding_form and :
-            output = self.latent.prior.mean if output is None else torch.cat((output, self.latent.prior.mean), axis=1)
-        if 'error' in self.output_form:
+        if 'posterior' in self.encoding_form and in_out == 'out':
+            encoding = sample
+        if ('top_error' in self.encoding_form and in_out == 'in') or ('bottom_error' in self.encoding_form and in_out == 'out'):
             error = sample - self.latent.prior.mean
-            output = error if output is None else torch.cat((output, error), axis=1)
-        if 'norm_error' in self.output_form:
+            encoding = error if encoding is None else torch.cat((encoding, error), axis=1)
+        if ('top_norm_error' in self.encoding_form and in_out == 'in') or ('bottom_norm_error' in self.encoding_form and in_out == 'out'):
             norm_error = (sample - self.latent.prior.mean) / torch.exp(self.latent.prior.log_var)
-            output = norm_error if output is None else torch.cat((output, norm_error), axis=1)
-        return output
-    
+            encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), axis=1)
+        return encoding
 
+    
     def encode(self, input):
-        input = torch.cat((input, self.get_output(self.latent.posterior.sample())), axis=1)
+        self.get_encoding('input')
+        input = torch.cat((input, self.get_encoding(self.latent.posterior.sample())), axis=1)
         encoded = self.encoder(input)
         sample = self.latent.encode(encoded)
         output = self.get_output(sample)
@@ -203,6 +211,7 @@ class LatentLevel(object):
 
 
     def decode(self, input, generate=False):
+        # sample the latent variables, concatenate any deterministic units, then pass through the decoder
         sample = self.latent.decode(input, generate=generate)
 
         if self.deterministic_decoder:
