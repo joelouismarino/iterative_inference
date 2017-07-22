@@ -8,15 +8,14 @@ from torchvision import datasets, transforms
 from util.distributions import DiagonalGaussian, Bernoulli
 from util.modules import Dense, MultiLayerPerceptron, GaussianVariable, LatentLevel
 
-
-# todo: modify input according to encoding form
+# todo: add support for multiple samples to encode, decode
 class LatentVariableModel(object):
 
     def __init__(self, train_config, arch):
 
         self.encoding_form = arch.encoding_form
         self.batch_size = train_config.batch_size
-        self.KL_min = train_config.KL_min
+        self.kl_min = train_config.kl_min
         assert train_config.output_distribution in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
         self.output_distribution = train_config.output_distribution
         self.levels = []
@@ -66,7 +65,9 @@ class LatentVariableModel(object):
 
             self.levels.append(latent_level)
 
-    def get_initial_encoding(self, input):
+    def get_input_encoding(self, input):
+        if 'bottom_error' in self.encoding_form or 'bottom_norm_error' in self.encoding_form:
+            assert self.output_dist is not None, 'Cannot encode error. Output distribution is None.'
         encoding = None
         if 'posterior' in self.encoding_form:
             encoding = input
@@ -82,7 +83,7 @@ class LatentVariableModel(object):
 
     def encode(self, input):
         # encode the input into a posterior estimate
-        h = self.get_initial_encoding(input)
+        h = self.get_input_encoding(input)
         if self._cuda_device:
             h.cuda(self._cuda_device)
         for latent_level in self.levels:
@@ -103,23 +104,23 @@ class LatentVariableModel(object):
             self.output_dist = DiagonalGaussian(output_mean, output_log_var)
         return self.output_dist
 
-    def KL_divergences(self):
-        # returns a list containing KL divergences at each level, for all examples
-        KL = []
+    def kl_divergences(self):
+        # returns a list containing kl divergences at each level, for all examples
+        kl = []
         for latent_level in self.levels:
-            KL.append(torch.clamp(latent_level.KL_divergence(), min=self.KL_min).sum(1))
-        return KL
+            kl.append(torch.clamp(latent_level.kl_divergence(), min=self.kl_min).sum(1))
+        return kl
 
-    def reconstruction_losses(self, input):
-        # returns the reconstruction evalutaion, for all examples
+    def conditional_likelihoods(self, input):
+        # returns the conditional likelihoods, for all examples
         return self.output_dist.log_prob(sample=input).sum(1)
 
     def ELBO(self, input):
         # returns the ELBO, averaged across examples
-        loss = self.reconstruction_losses(input)
-        KL = self.KL_divergences()
-        for level in range(len(KL)):
-            loss += KL[level]
+        loss = self.conditional_likelihoods(input)
+        kl = self.kl_divergences()
+        for level in range(len(kl)):
+            loss += kl[level]
         return loss.mean(0)
 
     def reset(self):
