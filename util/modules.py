@@ -302,6 +302,7 @@ class DenseGaussianVariable(object):
     def state_parameters(self):
         return self.posterior.state_parameters()
 
+"""
 class ConvGaussianVariable(object):
 
     def __init__(self, batch_size, n_variable_channels, filter_size, n_input, update_form):
@@ -325,7 +326,7 @@ class ConvGaussianVariable(object):
 
     def init_dist(self):
         return DiagonalGaussian(Variable(torch.zeros(self.batch_size, self.n_variable_channels, , )),
-                                Variable(torch.zeros(self.batch_size, self.n_variable_channels, , )))
+                                Variable(torch.zeros(self.batch_size, self.n_variables)))
 
     def encode(self, input):
         # encode the mean and log variance, update, return sample
@@ -395,7 +396,7 @@ class ConvGaussianVariable(object):
         return self.posterior.state_parameters()
 
 
-
+"""
 
 class LatentLevel(object):
 
