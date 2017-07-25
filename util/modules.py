@@ -34,6 +34,7 @@ class Dense(nn.Module):
         else:
             raise Exception('Non-linearity ' + str(non_linearity) + ' not found.')
 
+        self.dropout = None
         if dropout > 0.:
             self.dropout = nn.Dropout(dropout)
 
@@ -210,7 +211,7 @@ class MultiLayerConvolutional(nn.Module):
 
         return input
 
-class DenseGaussianVariable(object):
+class GaussianVariable(object):
 
     def __init__(self, batch_size, n_variables, n_input, update_form):
 
@@ -291,13 +292,22 @@ class DenseGaussianVariable(object):
         self.posterior.cuda(device_id)
 
     def parameters(self):
-        pass
+        return self.encoder_parameters() + self.decoder_parameters()
 
     def encoder_parameters(self):
-        pass
+        encoder_params = []
+        encoder_params.extend(list(self.posterior_mean.parameters()))
+        encoder_params.extend(list(self.posterior_log_var.parameters()))
+        if self.update_form == 'highway':
+            encoder_params.extend(list(self.posterior_mean_gate.parameters()))
+            encoder_params.extend(list(self.posterior_log_var_gate.parameters()))
+        return encoder_params
 
     def decoder_parameters(self):
-        pass
+        decoder_params = []
+        decoder_params.extend(list(self.prior_mean.parameters()))
+        decoder_params.extend(list(self.prior_log_var.parameters()))
+        return decoder_params
 
     def state_parameters(self):
         return self.posterior.state_parameters()
@@ -430,7 +440,7 @@ class LatentLevel(object):
         output = self.get_encoding(self.latent.encode(encoded), 'out')
         if self.deterministic_encoder:
             det = self.deterministic_encoder(encoded)
-            output = torch.cat((det, output), axis=1)
+            output = torch.cat((det, output), 1)
         return output
 
     def decode(self, input, generate=False):
@@ -438,7 +448,7 @@ class LatentLevel(object):
         sample = self.latent.decode(input, generate=generate)
         if self.deterministic_decoder:
             det = self.deterministic_decoder(input)
-            sample = torch.cat((sample, det), axis=1)
+            sample = torch.cat((sample, det), 1)
         return self.decoder(sample)
 
     def KL_divergence(self):
@@ -456,13 +466,21 @@ class LatentLevel(object):
         self.deterministic_decoder.cuda(device_id)
 
     def parameters(self):
-        pass
+        return self.encoder_parameters() + self.decoder_parameters()
 
     def encoder_parameters(self):
-        pass
+        encoder_params = []
+        encoder_params.extend(list(self.encoder.parameters()))
+        encoder_params.extend(list(self.deterministic_encoder.parameters()))
+        encoder_params.extend(list(self.latent.encoder_parameters()))
+        return encoder_params
 
     def decoder_parameters(self):
-        pass
+        decoder_params = []
+        decoder_params.extend(list(self.decoder.parameters()))
+        decoder_params.extend(list(self.deterministic_decoder.parameters()))
+        decoder_params.extend(list(self.latent.decoder_parameters()))
+        return decoder_params
 
     def state_parameters(self):
         return self.latent.state_parameters()
