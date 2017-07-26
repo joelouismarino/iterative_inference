@@ -60,10 +60,8 @@ class LatentVariableModel(object):
         decoder_arch['weight_norm'] = arch['weight_norm_dec']
 
         for level in range(len(arch['n_latent'])):
-            if level == 0:
-                encoder_arch['n_in'] = np.prod(self.input_size)
-            else:
-                encoder_arch['n_in'] = arch['n_latent'][level-1] + arch['n_det_enc'][level-1]
+
+            encoder_arch['n_in'] = self.get_input_encoding_size(level, arch)
             encoder_arch['n_units'] = arch['n_units_enc'][level]
             encoder_arch['n_layers'] = arch['n_layers_enc'][level]
 
@@ -81,6 +79,28 @@ class LatentVariableModel(object):
             self.levels.append(latent_level)
 
         self.top_level = Variable(torch.zeros(self.batch_size, self.top_size), requires_grad=True)
+
+    def get_input_encoding_size(self, level_num, arch):
+        if level_num == 0:
+            latent_size = np.prod(self.input_size)
+            det_size = 0
+        else:
+            latent_size = arch['n_latent'][level_num-1]
+            det_size = arch['n_det_enc'][level_num-1]
+        encoding_size = det_size
+
+        if 'posterior' in self.encoding_form:
+            encoding_size += latent_size
+        if 'bottom_error' in self.encoding_form:
+            encoding_size += latent_size
+        if 'bottom_norm_error' in self.encoding_form:
+            encoding_size += latent_size
+        if 'top_error' in self.encoding_form:
+            encoding_size += arch['n_latent'][level_num]
+        if 'top_norm_error' in self.encoding_form:
+            encoding_size += arch['n_latent'][level_num]
+
+        return encoding_size
 
     def get_input_encoding(self, input):
         if 'bottom_error' in self.encoding_form or 'bottom_norm_error' in self.encoding_form:
