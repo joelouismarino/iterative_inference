@@ -9,7 +9,7 @@ from scipy.io import loadmat
 
 """Function to download a variety of benchmark image datasets."""
 
-# todo: add labels
+# todo: add labels to remaining datasets
 # todo: add file iterators for ImageNet
 
 def load_data(dataset, data_path):
@@ -27,7 +27,7 @@ def load_data(dataset, data_path):
         fo.close()
         return result
 
-    if dataset in ['binarized_MNIST', 'MNIST']:
+    if dataset in ['binarized_MNIST', 'MNIST', 'mnist']:
         if not os.path.exists(os.path.join(data_path, 'MNIST')):
             os.makedirs(os.path.join(data_path, 'MNIST'))
 

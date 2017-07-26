@@ -16,7 +16,7 @@ class LatentVariableModel(object):
         self.encoding_form = arch.encoding_form
         self.batch_size = train_config.batch_size
         self.kl_min = train_config.kl_min
-        self.top_size = train_config.top_size
+        self.top_size = arch.top_size
         assert train_config.output_distribution in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
         self.output_distribution = train_config.output_distribution
         self.levels = []
@@ -28,19 +28,22 @@ class LatentVariableModel(object):
             self.mean_output = Dense(arch.n_units_dec[0], arch.n_latent[0], weight_norm=arch.weight_norm_dec)
             self.log_var_output = Dense(arch.n_units_dec[0], arch.n_latent[0], weight_norm=arch.weight_norm_dec)
         self._cuda_device = None
+        if train_config['cuda_device'] is not None:
+            self.cuda(train_config['cuda_device'])
 
     def construct_model(self, arch):
         # construct the model
 
         encoding_form = arch.encoding_form
         variable_update_form = arch.variable_update_form
+        constant_prior_variances = arch.constant_prior_variances
 
         encoder_arch = {}
         encoder_arch['non_linearity'] = arch.non_linearity_enc
         encoder_arch['connection_type'] = arch.connection_type_enc
         encoder_arch['batch_norm'] = arch.batch_norm_enc
         encoder_arch['weight_norm'] = arch.weight_norm_enc
-        
+
         decoder_arch = {}
         decoder_arch['non_linearity'] = arch.non_linearity_dec
         decoder_arch['connection_type'] = arch.connection_type_dec
@@ -62,7 +65,7 @@ class LatentVariableModel(object):
             variable_input_sizes = [arch.num_units_enc[level], arch.num_units_dec[level]]
 
             latent_level = LatentLevel(self.batch_size, encoder_arch, decoder_arch, n_latent, n_det,
-                                       encoding_form, variable_input_sizes, variable_update_form)
+                                       encoding_form, constant_prior_variances, variable_input_sizes, variable_update_form)
 
             self.levels.append(latent_level)
 
@@ -79,6 +82,8 @@ class LatentVariableModel(object):
             error = input - self.output_dist.mean
             if self.output_distribution == 'gaussian':
                 norm_error = error / torch.exp(self.output_dist.log_var)
+            elif self.output_distribution == 'bernoulli':
+                pass
             encoding = torch.cat((encoding, norm_error)) if encoding else norm_error
         return encoding
 

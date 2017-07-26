@@ -213,7 +213,7 @@ class MultiLayerConvolutional(nn.Module):
 
 class GaussianVariable(object):
 
-    def __init__(self, batch_size, n_variables, n_input, update_form):
+    def __init__(self, batch_size, n_variables, constant_prior_variances, n_input, update_form):
 
         self.batch_size = batch_size
         self.n_variables = n_variables
@@ -221,7 +221,9 @@ class GaussianVariable(object):
         self.update_form = update_form
 
         self.prior_mean = Dense(n_input[1], self.n_variables)
-        self.prior_log_var = Dense(n_input[1], self.n_variables)
+        self.prior_log_var = None
+        if not constant_prior_variances:
+            self.prior_log_var = Dense(n_input[1], self.n_variables)
         self.posterior_mean = Dense(n_input[0], self.n_variables)
         self.posterior_log_var = Dense(n_input[0], self.n_variables)
 
@@ -229,8 +231,10 @@ class GaussianVariable(object):
             self.posterior_mean_gate = Dense(n_input[0], self.n_variables, 'sigmoid')
             self.posterior_log_var_gate = Dense(n_input[0], self.n_variables, 'sigmoid')
 
-        self.prior = self.init_dist()
         self.posterior = self.init_dist()
+        self.prior = self.init_dist()
+        if constant_prior_variances:
+            self.prior.log_var_trainable()
 
     def init_dist(self):
         return DiagonalGaussian(Variable(torch.zeros(self.batch_size, self.n_variables)),
@@ -249,8 +253,9 @@ class GaussianVariable(object):
 
     def decode(self, input, generate=False):
         # decode the mean and log variance, update, return sample
-        mean, log_var = self.prior_mean(input), self.prior_log_var(input)
-        self.prior.mean, self.prior.log_var = mean, log_var
+        self.prior.mean = self.prior_mean(input)
+        if self.prior_log_var is not None:
+            self.prior.log_var = self.prior_log_var(input)
         sample = self.prior.sample() if generate else self.posterior.sample()
         return sample
 
@@ -273,16 +278,17 @@ class GaussianVariable(object):
     def reset_log_var(self):
         self.posterior.reset_log_var()
 
-    def trainable_mean(self, trainable=True):
-        self.posterior.mean_trainable(trainable)
+    def trainable_mean(self):
+        self.posterior.mean_trainable()
 
-    def trainable_log_var(self, trainable=True):
-        self.posterior.log_var_trainable(trainable)
+    def trainable_log_var(self):
+        self.posterior.log_var_trainable()
 
     def cuda(self, device_id=0):
         # place all modules on the GPU
         self.prior_mean.cuda(device_id)
-        self.prior_log_var.cuda(device_id)
+        if self.prior_log_var is not None:
+            self.prior_log_var.cuda(device_id)
         self.posterior_mean.cuda(device_id)
         self.posterior_log_var.cuda(device_id)
         if self.update_form == 'highway':
@@ -306,7 +312,10 @@ class GaussianVariable(object):
     def decoder_parameters(self):
         decoder_params = []
         decoder_params.extend(list(self.prior_mean.parameters()))
-        decoder_params.extend(list(self.prior_log_var.parameters()))
+        if self.prior_log_var is not None:
+            decoder_params.extend(list(self.prior_log_var.parameters()))
+        else:
+            decoder_params.append(self.prior.trainable_log_var)
         return decoder_params
 
     def state_parameters(self):
@@ -410,7 +419,8 @@ class ConvGaussianVariable(object):
 
 class LatentLevel(object):
 
-    def __init__(self, batch_size, encoder_arch, decoder_arch, n_latent, n_det, encoding_form, variable_input_sizes, variable_update_form):
+    def __init__(self, batch_size, encoder_arch, decoder_arch, n_latent, n_det, encoding_form, constant_prior_variances,
+                 variable_input_sizes, variable_update_form):
 
         self.batch_size = batch_size
         self.n_latent = n_latent
@@ -418,7 +428,8 @@ class LatentLevel(object):
 
         self.encoder = MultiLayerPerceptron(**encoder_arch)
         self.decoder = MultiLayerPerceptron(**decoder_arch)
-        self.latent = GaussianVariable(self.batch_size, self.n_latent, variable_input_sizes, variable_update_form)
+        self.latent = GaussianVariable(self.batch_size, self.n_latent, constant_prior_variances, variable_input_sizes,
+                                       variable_update_form)
         self.deterministic_encoder = Dense(variable_input_sizes[0], n_det[0]) if n_det[0] > 0 else None
         self.deterministic_decoder = Dense(variable_input_sizes[1], n_det[1]) if n_det[1] > 0 else None
 
@@ -433,7 +444,7 @@ class LatentLevel(object):
             norm_error = self.latent.norm_error()
             encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), axis=1)
         return encoding
-    
+
     def encode(self, input):
         # encode the input, possibly with errors, concatenate any deterministic units
         encoded = self.encoder(self.get_encoding(input, 'in'))
@@ -456,6 +467,10 @@ class LatentLevel(object):
 
     def reset(self):
         self.latent.reset()
+
+    def trainable_state(self):
+        self.latent.trainable_mean()
+        self.latent.trainable_log_var()
 
     def cuda(self, device_id=0):
         # place all modules on the GPU

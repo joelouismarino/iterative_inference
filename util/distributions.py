@@ -11,6 +11,8 @@ class DiagonalGaussian(object):
         self.log_var = log_var
         self._sample = None
         self._cuda_device = None
+        self.trainable_mean = None
+        self.trainable_log_var = None
 
     def sample(self, resample=False):
         if self._sample is None or resample:
@@ -33,16 +35,32 @@ class DiagonalGaussian(object):
         self.log_var.data.fill_(0.)
         self.sample = None
 
-    def mean_trainable(self, trainable=True):
-        self.mean.requires_grad = trainable
+    def mean_trainable(self):
+        self.trainable_mean = Variable(torch.zeros(self.mean.size()[1:]), requires_grad=True)
+        if self._cuda_device is not None:
+            self.trainable_mean = self.trainable_mean.cuda(self._cuda_device)
+        if len(self.mean_size()) == 2:
+            self.mean = self.trainable_mean.unsqueeze(0).repeat(self.mean.size()[0], 1)
+        else:
+            self.mean = self.trainable_mean.unsqueeze(0).repeat(self.mean.size()[0], 1, 1, 1)
 
-    def log_var_trainable(self, trainable=True):
-        self.log_var.requires_grad = trainable
+    def log_var_trainable(self):
+        self.trainable_log_var = Variable(torch.zeros(self.log_var.size()[1:]), requires_grad=True)
+        if self._cuda_device is not None:
+            self.trainable_log_var = self.trainable_log_var.cuda(self._cuda_device)
+        if len(self.log_var_size()) == 2:
+            self.log_var = self.trainable_log_var.unsqueeze(0).repeat(self.log_var.size()[0], 1)
+        else:
+            self.log_var = self.trainable_log_var.unsqueeze(0).repeat(self.log_var.size()[0], 1, 1, 1)
 
     def state_parameters(self):
         return self.mean, self.log_var
 
     def cuda(self, device_id=0):
+        if self.trainable_mean is not None:
+            self.trainble_mean = self.trainable_mean.cuda(device_id)
+        if self.trainable_log_var is not None:
+            self.trainable_log_var = self.trainable_log_var.cuda(device_id)
         self.mean = self.mean.cuda(device_id)
         self.log_var = self.log_var.cuda(device_id)
         self._cuda_device = device_id
