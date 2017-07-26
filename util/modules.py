@@ -265,7 +265,7 @@ class GaussianVariable(object):
     def norm_error(self):
         return self.error() / (torch.exp(self.prior.log_var) + 1e-7)
 
-    def KL_divergence(self):
+    def kl_divergence(self):
         return self.posterior.log_prob(self.posterior.sample()) - self.prior.log_prob(self.posterior.sample())
 
     def reset(self):
@@ -439,10 +439,10 @@ class LatentLevel(object):
             encoding = input
         if ('top_error' in self.encoding_form and in_out == 'in') or ('bottom_error' in self.encoding_form and in_out == 'out'):
             error = self.latent.error()
-            encoding = error if encoding is None else torch.cat((encoding, error), axis=1)
+            encoding = error if encoding is None else torch.cat((encoding, error), 1)
         if ('top_norm_error' in self.encoding_form and in_out == 'in') or ('bottom_norm_error' in self.encoding_form and in_out == 'out'):
             norm_error = self.latent.norm_error()
-            encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), axis=1)
+            encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), 1)
         return encoding
 
     def encode(self, input):
@@ -462,8 +462,8 @@ class LatentLevel(object):
             sample = torch.cat((sample, det), 1)
         return self.decoder(sample)
 
-    def KL_divergence(self):
-        return self.latent.KL_divergence()
+    def kl_divergence(self):
+        return self.latent.kl_divergence()
 
     def reset(self):
         self.latent.reset()
@@ -477,8 +477,10 @@ class LatentLevel(object):
         self.encoder.cuda(device_id)
         self.decoder.cuda(device_id)
         self.latent.cuda(device_id)
-        self.deterministic_encoder.cuda(device_id)
-        self.deterministic_decoder.cuda(device_id)
+        if self.deterministic_encoder:
+            self.deterministic_encoder.cuda(device_id)
+        if self.deterministic_decoder:
+            self.deterministic_decoder.cuda(device_id)
 
     def parameters(self):
         return self.encoder_parameters() + self.decoder_parameters()
@@ -486,14 +488,16 @@ class LatentLevel(object):
     def encoder_parameters(self):
         encoder_params = []
         encoder_params.extend(list(self.encoder.parameters()))
-        encoder_params.extend(list(self.deterministic_encoder.parameters()))
+        if self.deterministic_encoder:
+            encoder_params.extend(list(self.deterministic_encoder.parameters()))
         encoder_params.extend(list(self.latent.encoder_parameters()))
         return encoder_params
 
     def decoder_parameters(self):
         decoder_params = []
         decoder_params.extend(list(self.decoder.parameters()))
-        decoder_params.extend(list(self.deterministic_decoder.parameters()))
+        if self.deterministic_decoder:
+            decoder_params.extend(list(self.deterministic_decoder.parameters()))
         decoder_params.extend(list(self.latent.decoder_parameters()))
         return decoder_params
 

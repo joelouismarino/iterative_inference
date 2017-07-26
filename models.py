@@ -1,73 +1,86 @@
 import torch
 import torch.utils.data
-import torch.nn as nn
-import torch.optim as optim
 from torch.autograd import Variable
-from torchvision import datasets, transforms
+import numpy as np
 
 from util.distributions import DiagonalGaussian, Bernoulli
 from util.modules import Dense, MultiLayerPerceptron, GaussianVariable, LatentLevel
 
 # todo: add support for multiple samples to encode, decode
+# todo: allow for printing out the model architecture
+
 class LatentVariableModel(object):
 
-    def __init__(self, train_config, arch):
+    def __init__(self, train_config, arch, data_size):
 
-        self.encoding_form = arch.encoding_form
-        self.batch_size = train_config.batch_size
-        self.kl_min = train_config.kl_min
-        self.top_size = arch.top_size
-        assert train_config.output_distribution in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
-        self.output_distribution = train_config.output_distribution
+        self.encoding_form = arch['encoding_form']
+        self.constant_variances = arch['constant_prior_variances']
+        self.batch_size = train_config['batch_size']
+        self.kl_min = train_config['kl_min']
+        self.top_size = arch['top_size']
+        arch['n_units_dec'].append(arch['top_size'])
+        self.input_size = data_size
+        assert train_config['output_distribution'] in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
+        self.output_distribution = train_config['output_distribution']
         self.levels = []
+        self.top_level = None
         self.construct_model(arch)
         self.output_dist = None
         if self.output_distribution == 'bernoulli':
-            self.mean_output = Dense(arch.n_units_dec[0], arch.n_latent[0], non_linearity='sigmoid', weight_norm=arch.weight_norm_dec)
+            self.mean_output = Dense(arch['n_units_dec'][0], np.prod(self.input_size), non_linearity='sigmoid', weight_norm=arch['weight_norm_dec'])
         if self.output_distribution == 'gaussian':
-            self.mean_output = Dense(arch.n_units_dec[0], arch.n_latent[0], weight_norm=arch.weight_norm_dec)
-            self.log_var_output = Dense(arch.n_units_dec[0], arch.n_latent[0], weight_norm=arch.weight_norm_dec)
+            self.mean_output = Dense(arch['n_units_dec'][0], np.prod(self.input_size), weight_norm=arch['weight_norm_dec'])
+            if self.constant_variances:
+                self.trainable_log_var = Variable(torch.zeros(np.prod(data_size)), requires_grad=True)
+                self.log_var_output = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
+            else:
+                self.log_var_output = Dense(arch['n_units_dec'][0], np.prod(data_size), weight_norm=arch['weight_norm_dec'])
         self._cuda_device = None
         if train_config['cuda_device'] is not None:
             self.cuda(train_config['cuda_device'])
 
+    # todo: take encoding form into account for encoder input size
     def construct_model(self, arch):
-        # construct the model
+        # construct the model from the architecture dictionary
 
-        encoding_form = arch.encoding_form
-        variable_update_form = arch.variable_update_form
-        constant_prior_variances = arch.constant_prior_variances
+        encoding_form = arch['encoding_form']
+        variable_update_form = arch['variable_update_form']
+        constant_prior_variances = arch['constant_prior_variances']
 
         encoder_arch = {}
-        encoder_arch['non_linearity'] = arch.non_linearity_enc
-        encoder_arch['connection_type'] = arch.connection_type_enc
-        encoder_arch['batch_norm'] = arch.batch_norm_enc
-        encoder_arch['weight_norm'] = arch.weight_norm_enc
+        encoder_arch['non_linearity'] = arch['non_linearity_enc']
+        encoder_arch['connection_type'] = arch['connection_type_enc']
+        encoder_arch['batch_norm'] = arch['batch_norm_enc']
+        encoder_arch['weight_norm'] = arch['weight_norm_enc']
 
         decoder_arch = {}
-        decoder_arch['non_linearity'] = arch.non_linearity_dec
-        decoder_arch['connection_type'] = arch.connection_type_dec
-        decoder_arch['batch_norm'] = arch.batch_norm_dec
-        decoder_arch['weight_norm'] = arch.weight_norm_dec
+        decoder_arch['non_linearity'] = arch['non_linearity_dec']
+        decoder_arch['connection_type'] = arch['connection_type_dec']
+        decoder_arch['batch_norm'] = arch['batch_norm_dec']
+        decoder_arch['weight_norm'] = arch['weight_norm_dec']
 
-        for level in range(len(arch.n_latent)):
+        for level in range(len(arch['n_latent'])):
+            if level == 0:
+                encoder_arch['n_in'] = np.prod(self.input_size)
+            else:
+                encoder_arch['n_in'] = arch['n_latent'][level-1] + arch['n_det_enc'][level-1]
+            encoder_arch['n_units'] = arch['n_units_enc'][level]
+            encoder_arch['n_layers'] = arch['n_layers_enc'][level]
 
-            encoder_arch['n_in'] = arch.n_latent[level] + arch.n_det_enc[level]
-            encoder_arch['n_units'] = arch.n_units_enc[level]
-            encoder_arch['n_layers'] = arch.n_layers_enc[level]
+            decoder_arch['n_in'] = arch['n_latent'][level] + arch['n_det_dec'][level]
+            decoder_arch['n_units'] = arch['n_units_dec'][level]
+            decoder_arch['n_layers'] = arch['n_layers_dec'][level]
 
-            decoder_arch['n_in'] = arch.n_latent[level] + arch.n_det_dec[level+1]
-            decoder_arch['n_units'] = arch.n_units_dec[level]
-            decoder_arch['n_layers'] = arch.n_layers_dec[level]
-
-            n_latent = arch.n_latent[level]
-            n_det = [arch.n_det_enc[level], arch.n_det_dec[level]]
-            variable_input_sizes = [arch.num_units_enc[level], arch.num_units_dec[level]]
+            n_latent = arch['n_latent'][level]
+            n_det = [arch['n_det_enc'][level], arch['n_det_dec'][level]]
+            variable_input_sizes = [arch['n_units_enc'][level], arch['n_units_dec'][level+1]]
 
             latent_level = LatentLevel(self.batch_size, encoder_arch, decoder_arch, n_latent, n_det,
                                        encoding_form, constant_prior_variances, variable_input_sizes, variable_update_form)
 
             self.levels.append(latent_level)
+
+        self.top_level = Variable(torch.zeros(self.batch_size, self.top_size), requires_grad=True)
 
     def get_input_encoding(self, input):
         if 'bottom_error' in self.encoding_form or 'bottom_norm_error' in self.encoding_form:
@@ -89,15 +102,15 @@ class LatentVariableModel(object):
 
     def encode(self, input):
         # encode the input into a posterior estimate
-        h = self.get_input_encoding(input)
         if self._cuda_device is not None:
-            h = h.cuda(self._cuda_device)
+            input = input.cuda(self._cuda_device)
+        h = self.get_input_encoding(input)
         for latent_level in self.levels:
             h = latent_level.encode(h)
 
     def decode(self, generate=False):
         # decode the posterior or prior estimate
-        h = Variable(torch.zeros(self.batch_size, self.top_size))
+        h = self.top_level
         if self._cuda_device is not None:
             h = h.cuda(self._cuda_device)
         for latent_level in self.levels:
@@ -108,7 +121,10 @@ class LatentVariableModel(object):
             self.output_dist = Bernoulli(output_mean)
         elif self.output_distribution == 'gaussian':
             output_mean = self.mean_output(h)
-            output_log_var = self.log_var_output(h)
+            if self.constant_variances:
+                output_log_var = self.log_var_output
+            else:
+                output_log_var = self.log_var_output(h)
             self.output_dist = DiagonalGaussian(output_mean, output_log_var)
         return self.output_dist
 
@@ -121,6 +137,8 @@ class LatentVariableModel(object):
 
     def conditional_likelihoods(self, input):
         # returns the conditional likelihoods, for all examples
+        if self._cuda_device is not None:
+            input = input.cuda(self._cuda_device)
         return self.output_dist.log_prob(sample=input).sum(1)
 
     def ELBO(self, input):
@@ -135,6 +153,10 @@ class LatentVariableModel(object):
         # reset the posterior estimate
         for latent_level in self.levels:
             latent_level.reset()
+
+    def trainable_state(self):
+        for latent_level in self.levels:
+            latent_level.trainable_state()
 
     def parameters(self):
         return self.encoder_parameters() + self.decoder_parameters()
@@ -151,9 +173,12 @@ class LatentVariableModel(object):
         params = []
         for level in self.levels:
             params.extend(level.decoder_parameters())
-        params.extend(list(self.mean_output.parameters))
+        params.extend(list(self.mean_output.parameters()))
         if self.output_distribution == 'gaussian':
-            params.extend(list(self.log_var_output.parameters()))
+            if self.constant_variances:
+                params.append(self.trainable_log_var)
+            else:
+                params.extend(list(self.log_var_output.parameters()))
         return params
 
     def state_parameters(self):
@@ -166,11 +191,16 @@ class LatentVariableModel(object):
     def cuda(self, device_id=0):
         # place the model on the GPU
         self._cuda_device = device_id
+        self.top_level = self.top_level.cuda(device_id)
         for latent_level in self.levels:
             latent_level.cuda(device_id)
         self.mean_output.cuda(device_id)
         if self.output_distribution == 'gaussian':
-            self.log_var_output.cuda(device_id)
+            if self.constant_variances:
+                self.trainable_log_var = self.trainable_log_var.cuda(device_id)
+                self.log_var_output = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
+            else:
+                self.log_var_output.cuda(device_id)
 
     def save(self):
         pass

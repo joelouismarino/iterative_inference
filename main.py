@@ -10,23 +10,22 @@ data_path = '/home/joe/Datasets'
 (train_data, train_labels), (val_data, val_labels) = load_data(train_config['dataset'], data_path)
 
 # construct model
-model = LatentVariableModel(train_config, arch)
+model = LatentVariableModel(train_config, arch, train_data.shape[1:])
 
 # construct optimizers
 encoder_params = model.encoder_parameters()
-encoder_optimizer = opt.Adamax(encoder_params, lr=train_config['learning_rate'])
-encoder_scheduler = opt.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, mode='min', factor=0.5)
+encoder_optimizer = opt.Adamax(encoder_params, lr=train_config['learning_rate'] / train_config['n_iterations'])
+#encoder_scheduler = opt.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, mode='min', factor=0.5)
 
 decoder_params = model.decoder_parameters()
 decoder_optimizer = opt.Adamax(decoder_params, lr=train_config['learning_rate'])
-decoder_scheduler = opt.lr_scheduler.ReduceLROnPlateau(decoder_optimizer, mode='min', factor=0.5)
+#decoder_scheduler = opt.lr_scheduler.ReduceLROnPlateau(decoder_optimizer, mode='min', factor=0.5)
 
 for epoch in range(10000):
 
-    train(model, train_data, (encoder_optimizer, decoder_optimizer))
+    train(model, train_config, train_data.reshape(-1, 3072), (encoder_optimizer, decoder_optimizer))
     validate(model, (val_data, val_labels))
 
-    encoder_scheduler.step()
-    decoder_scheduler.step()
+    #encoder_scheduler.step()
+    #decoder_scheduler.step()
 
-temp
