@@ -433,7 +433,7 @@ class LatentLevel(object):
             norm_error = self.latent.norm_error()
             encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), axis=1)
         return encoding
-
+    
     def encode(self, input):
         # encode the input, possibly with errors, concatenate any deterministic units
         encoded = self.encoder(self.get_encoding(input, 'in'))

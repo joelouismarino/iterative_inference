@@ -16,16 +16,17 @@ class LatentVariableModel(object):
         self.encoding_form = arch.encoding_form
         self.batch_size = train_config.batch_size
         self.kl_min = train_config.kl_min
+        self.top_size = train_config.top_size
         assert train_config.output_distribution in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
         self.output_distribution = train_config.output_distribution
         self.levels = []
         self.construct_model(arch)
         self.output_dist = None
         if self.output_distribution == 'bernoulli':
-            self.mean_output = Dense(arch.n_units_dec, arch.n_latent[0], non_linearity='sigmoid', weight_norm=arch.weight_norm_dec)
+            self.mean_output = Dense(arch.n_units_dec[0], arch.n_latent[0], non_linearity='sigmoid', weight_norm=arch.weight_norm_dec)
         if self.output_distribution == 'gaussian':
-            self.mean_output = Dense(arch.n_units_dec, arch.n_latent[0], weight_norm=arch.weight_norm_dec)
-            self.log_var_output = Dense(arch.n_units_dec, arch.n_latent[0], weight_norm=arch.weight_norm_dec)
+            self.mean_output = Dense(arch.n_units_dec[0], arch.n_latent[0], weight_norm=arch.weight_norm_dec)
+            self.log_var_output = Dense(arch.n_units_dec[0], arch.n_latent[0], weight_norm=arch.weight_norm_dec)
         self._cuda_device = None
 
     def construct_model(self, arch):
@@ -39,7 +40,7 @@ class LatentVariableModel(object):
         encoder_arch['connection_type'] = arch.connection_type_enc
         encoder_arch['batch_norm'] = arch.batch_norm_enc
         encoder_arch['weight_norm'] = arch.weight_norm_enc
-
+        
         decoder_arch = {}
         decoder_arch['non_linearity'] = arch.non_linearity_dec
         decoder_arch['connection_type'] = arch.connection_type_dec
@@ -84,14 +85,16 @@ class LatentVariableModel(object):
     def encode(self, input):
         # encode the input into a posterior estimate
         h = self.get_input_encoding(input)
-        if self._cuda_device:
-            h.cuda(self._cuda_device)
+        if self._cuda_device is not None:
+            h = h.cuda(self._cuda_device)
         for latent_level in self.levels:
             h = latent_level.encode(h)
 
     def decode(self, generate=False):
         # decode the posterior or prior estimate
-        h = None
+        h = Variable(torch.zeros(self.batch_size, self.top_size))
+        if self._cuda_device is not None:
+            h = h.cuda(self._cuda_device)
         for latent_level in self.levels:
             h = latent_level.decode(h, generate)
 
@@ -127,6 +130,9 @@ class LatentVariableModel(object):
         # reset the posterior estimate
         for latent_level in self.levels:
             latent_level.reset()
+
+    def parameters(self):
+        return self.encoder_parameters() + self.decoder_parameters()
 
     def encoder_parameters(self):
         # return a list containing all parameters in the encoder
