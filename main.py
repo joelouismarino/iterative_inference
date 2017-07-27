@@ -1,8 +1,13 @@
-import torch.optim as opt
 from config import train_config, arch
 from models import LatentVariableModel
 from util.data import load_data
+from util.misc import get_optimizers
 from util.train_val import train, validate
+from util.visualize import initialize_environment, save_environment
+
+# todo: set up logging
+global vis
+vis = initialize_environment('test')
 
 data_path = '/home/joe/Datasets'
 
@@ -12,20 +17,11 @@ data_path = '/home/joe/Datasets'
 # construct model
 model = LatentVariableModel(train_config, arch, train_data.shape[1:])
 
-# construct optimizers
-encoder_params = model.encoder_parameters()
-encoder_optimizer = opt.Adamax(encoder_params, lr=train_config['learning_rate'] / train_config['n_iterations'])
-#encoder_scheduler = opt.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, mode='min', factor=0.5)
+# get optimizers
+(enc_opt, enc_sched), (dec_opt, dec_sched) = get_optimizers(train_config, model)
 
-decoder_params = model.decoder_parameters()
-decoder_optimizer = opt.Adamax(decoder_params, lr=train_config['learning_rate'])
-#decoder_scheduler = opt.lr_scheduler.ReduceLROnPlateau(decoder_optimizer, mode='min', factor=0.5)
-
-for epoch in range(10000):
-
-    train(model, train_config, train_data.reshape(-1, 3072), (encoder_optimizer, decoder_optimizer))
-    validate(model, (val_data, val_labels))
-
-    #encoder_scheduler.step()
-    #decoder_scheduler.step()
-
+for epoch in range(1):
+    train(model, train_config, train_data.reshape(-1, 3072), (enc_opt, dec_opt))
+    validate(model, train_config, (val_data, val_labels))
+    save_environment()
+    #enc_sched.step(); dec_sched.step()

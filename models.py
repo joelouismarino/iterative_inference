@@ -155,7 +155,7 @@ class LatentVariableModel(object):
             kl.append(torch.clamp(latent_level.kl_divergence(), min=self.kl_min).sum(1))
         return kl
 
-    def conditional_likelihoods(self, input):
+    def conditional_log_likelihoods(self, input):
         # returns the conditional likelihoods, for all examples
         if self._cuda_device is not None:
             input = input.cuda(self._cuda_device)
@@ -163,11 +163,16 @@ class LatentVariableModel(object):
 
     def ELBO(self, input):
         # returns the ELBO, averaged across examples
-        loss = self.conditional_likelihoods(input)
-        kl = self.kl_divergences()
-        for level in range(len(kl)):
-            loss += kl[level]
-        return loss.mean(0)
+        cond_like = self.conditional_log_likelihoods(input)
+        kl = sum(self.kl_divergences())
+        elbo = cond_like - kl
+        return elbo.mean(0)
+
+    def losses(self, input):
+        cond_log_like = self.conditional_log_likelihoods(input)
+        kl = sum(self.kl_divergences())
+        elbo = cond_log_like - kl
+        return elbo.mean(0), cond_log_like.mean(0), kl.mean(0)
 
     def reset(self):
         # reset the posterior estimate
