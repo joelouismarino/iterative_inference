@@ -32,6 +32,11 @@ def train_on_batch(model, batch, n_iterations, optimizers):
     enc_opt.step()
     dec_opt.step()
 
+    elbo = elbo.data.cpu().numpy()[0]
+    cond_log_like = cond_log_like.data.cpu().numpy()[0]
+    for i in range(len(kl)):
+        kl[i] = kl[i].data.cpu().numpy()[0]
+
     return elbo, cond_log_like, kl
 
 
@@ -117,9 +122,9 @@ def train(model, train_config, data, optimizers, shuffle_data=True):
     batch_size = train_config['batch_size']
     n_examples = data.shape[0]
 
-    total_elbo = Variable(torch.zeros(1))
-    total_cond_log_like = Variable(torch.zeros(1))
-    total_kl = [Variable(torch.zeros(1)) for _ in range(len(model.levels))]
+    avg_elbo = 0.
+    avg_cond_log_like = 0.
+    avg_kl = [0. for _ in range(len(model.levels))]
 
     indices = np.arange(n_examples)
     if shuffle_data:
@@ -132,21 +137,17 @@ def train(model, train_config, data, optimizers, shuffle_data=True):
         batch = np.copy(data[indices[data_index:data_index + batch_size]])
         batch = Variable(torch.from_numpy(batch))
         elbo, cond_log_like, kl = train_on_batch(model, batch, train_config['n_iterations'], optimizers)
-        total_elbo += elbo
-        total_cond_log_like += cond_log_like
-        for i in range(len(total_kl)):
-            total_kl[i] += kl
+        avg_elbo += elbo[0]
+        avg_cond_log_like += cond_log_like[0]
+        for i in range(len(avg_kl)):
+            avg_kl[i] += kl[i][0]
 
-    total_elbo /= n_batch
-    total_cond_log_like /= n_batch
-    for i in range(len(total_kl)):
-        total_kl[i] /= n_batch
+    avg_elbo /= n_batch
+    avg_cond_log_like /= n_batch
+    for i in range(len(avg_kl)):
+        avg_kl[i] /= n_batch
 
-    total_elbo = total_elbo.data.cpu().numpy()[0]
-    total_cond_log_like = total_cond_log_like.data.cpu().numpy()[0]
-    for i in range(len(total_kl)):
-        total_kl[i] = total_kl[i].data.cpu().numpy()[0]
-
-    return total_elbo, total_cond_log_like, total_kl
+    print avg_elbo, avg_cond_log_like, avg_kl
+    return avg_elbo, avg_cond_log_like, avg_kl
 
 

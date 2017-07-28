@@ -170,7 +170,7 @@ class LatentVariableModel(object):
 
     def elbo(self, input, averaged=False):
         # returns the ELBO
-        cond_like = self.conditional_log_likelihoods(input.view(-1, self.input_size))
+        cond_like = self.conditional_log_likelihoods(input)
         kl = sum(self.kl_divergences())
         lower_bound = cond_like - kl
         if averaged:
@@ -180,9 +180,9 @@ class LatentVariableModel(object):
 
     def losses(self, input, averaged=False):
         # returns all losses
-        cond_log_like = self.conditional_log_likelihoods(input.view(-1, self.input_size))
+        cond_log_like = self.conditional_log_likelihoods(input)
         kl = self.kl_divergences()
-        lower_bound = cond_log_like - kl
+        lower_bound = cond_log_like - sum(kl)
         if averaged:
             return lower_bound.mean(0), cond_log_like.mean(0), [level_kl.mean(0) for level_kl in kl]
         else:

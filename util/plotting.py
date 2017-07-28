@@ -62,7 +62,7 @@ def plot_train(func):
         avg_elbo, avg_cond_log_like, avg_kl = output
         update_trace(np.array([-avg_elbo]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name='Train')
         update_trace(np.array([-avg_cond_log_like]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Train')
-        update_trace(np.array([avg_kl]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Train')
+        #update_trace(np.array([avg_kl]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Train')
         return output, handle_dict
     return plotting_func
 

@@ -30,8 +30,7 @@ for epoch in range(10000):
     train(model, train_config, train_data, epoch+1, handle_dict, (enc_opt, dec_opt))
     toc = time.time()
     print 'Time: ' + str(toc - tic)
-    print train_data.shape
     # validation
-    run(model, train_config, val_data, epoch+1, handle_dict)
+    #run(model, train_config, val_data, epoch+1, handle_dict)
     save_env()
     #enc_sched.step(); dec_sched.step()
