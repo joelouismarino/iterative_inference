@@ -2,7 +2,7 @@ import torch
 from torch.autograd import Variable
 import numpy as np
 from random import shuffle
-from plotting import plot_images, plot_line, plot_metrics
+from plotting import plot_images, plot_line, plot_train, plot_model_vis
 
 
 def train_on_batch(model, batch, n_iterations, optimizers):
@@ -36,6 +36,7 @@ def train_on_batch(model, batch, n_iterations, optimizers):
 
 
 # todo: add importance sampling x 5000 samples
+# todo: add functionality to capture latent state, etc.
 def run_on_batch(model, batch, n_iterations):
     """Runs the model on a single batch."""
 
@@ -48,7 +49,7 @@ def run_on_batch(model, batch, n_iterations):
     model.decode()
 
     # inference iterations
-    for i in range(n_iterations - 1):
+    for i in range(n_iterations):
         model.encode(batch)
         model.decode()
         elbo, cond_log_like, kl = model.losses(batch)
@@ -56,19 +57,10 @@ def run_on_batch(model, batch, n_iterations):
         total_cond_log_like[i] = cond_log_like.data.cpu().numpy()[0]
         total_kl[i] = kl.data.cpu().numpy()[0]
 
-    # final iteration
-    model.encode(batch)
-    model.decode()
-
-    elbo, cond_log_like, kl = model.losses(batch)
-    total_elbo[-1] = elbo.data.cpu().numpy()[0]
-    total_cond_log_like[-1] = cond_log_like.data.cpu().numpy()[0]
-    total_kl[-1] = kl.data.cpu().numpy()[0]
-
     return total_elbo, total_cond_log_like, total_kl
 
 
-@plot_metrics
+@plot_model_vis
 def run(model, train_config, data, vis=False):
     """Runs the model on a set of data."""
 
@@ -96,11 +88,31 @@ def run(model, train_config, data, vis=False):
         total_cond_log_like[:, indices[data_index:data_index + batch_size]] = cond_log_like
         total_kl[:, indices[data_index:data_index + batch_size]] = kl
 
+    """
+    visualization code:
+    rand_batch_num = np.random.randint(n_batch)
+    rand_batch = np.copy(data[rand_batch_num:rand_batch_num+batch_size])
+    plot_images(rand_batch.reshape(-1, 32, 32, 3), caption='Random Batch')
+    rand_batch = Variable(torch.from_numpy(rand_batch))
+    model.reset()
+    output_dist = model.decode()
+    plot_images(output_dist.mean.data.cpu().numpy().reshape(-1, 32, 32, 3), caption='Iteration: 0')
+    for i in range(train_config['n_iterations']):
+        model.encode(rand_batch)
+        output_dist = model.decode()
+        plot_images(output_dist.mean.data.cpu().numpy().reshape(-1, 32, 32, 3), caption='Iteration: '+str(i+1))
+        elbo, cond_log_like, kl = model.losses(batch)
+
+    output_dist = model.decode(generate=True)
+    plot_images(output_dist.mean.data.cpu().numpy().reshape(-1, 32, 32, 3), caption='Generation')
+    """
+
     return total_elbo, total_cond_log_like, total_kl
 
 
-@plot_metrics
+@plot_train
 def train(model, train_config, data, optimizers, shuffle_data=True):
+    """Trains the model on set of data using optimizers."""
 
     batch_size = train_config['batch_size']
     n_examples = data.shape[0]
@@ -138,22 +150,3 @@ def train(model, train_config, data, optimizers, shuffle_data=True):
     return total_elbo, total_cond_log_like, total_kl
 
 
-
-"""
-visualization code:
-rand_batch_num = np.random.randint(n_batch)
-rand_batch = np.copy(data[rand_batch_num:rand_batch_num+batch_size])
-plot_images(rand_batch.reshape(-1, 32, 32, 3), caption='Random Batch')
-rand_batch = Variable(torch.from_numpy(rand_batch))
-model.reset()
-output_dist = model.decode()
-plot_images(output_dist.mean.data.cpu().numpy().reshape(-1, 32, 32, 3), caption='Iteration: 0')
-for i in range(train_config['n_iterations']):
-    model.encode(rand_batch)
-    output_dist = model.decode()
-    plot_images(output_dist.mean.data.cpu().numpy().reshape(-1, 32, 32, 3), caption='Iteration: '+str(i+1))
-    elbo, cond_log_like, kl = model.losses(batch)
-
-output_dist = model.decode(generate=True)
-plot_images(output_dist.mean.data.cpu().numpy().reshape(-1, 32, 32, 3), caption='Generation')
-"""

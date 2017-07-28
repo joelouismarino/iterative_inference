@@ -12,21 +12,12 @@ def initialize_env(env='main', port=8097):
 
 
 def initialize_plots():
-    handle_dict = {}
-
     nans = np.zeros((1, 2), dtype=float)
     nans.fill(np.nan)
-
     elbo_handle = plot_line(nans, np.ones((1, 2)), legend=['Train', 'Validation'], title='ELBO', xlabel='Epochs', ylabel='-ELBO (Nats)', xformat='log', yformat='log')
-    handle_dict['elbo'] = elbo_handle
-
     cond_log_like_handle = plot_line(nans, np.ones((1, 2)), legend=['Train', 'Validation'], title='Conditional Log Likelihood', xlabel='Epochs', ylabel='-log P(x | z) (Nats)', xformat='log', yformat='log')
-    handle_dict['cond_log_like'] = cond_log_like_handle
-
     kl_handle = plot_line(nans, np.ones((1, 2)), legend=['Train', 'Validation'], title='KL Divergence', xlabel='Epochs', ylabel='KL(q || p) (Nats)', xformat='log', yformat='log')
-    handle_dict['kl'] = kl_handle
-
-    return handle_dict
+    return dict(elbo=elbo_handle, cond_log_like=cond_log_like_handle, kl=kl_handle)
 
 
 def save_env():
@@ -64,26 +55,33 @@ def update_trace(Y, X, win, name):
     vis.updateTrace(X, Y, win=win, name=name)
 
 
-def plot_metrics(func):
-    """Wrapper around training/validation function to plot the outputs in corresponding visdom windows."""
-    def plotting_func(model, train_config, data, epoch, handle_dict, train=False, optimizers=None, shuffle_data=True):
+def plot_train(func):
+    """Wrapper around training function to plot the outputs in corresponding visdom windows."""
+    def plotting_func(model, train_config, data, epoch, handle_dict, optimizers, shuffle_data=True):
+        output = func(model, train_config, data, optimizers, shuffle_data=True)
+        avg_elbo, avg_cond_log_like, avg_kl = output
+        update_trace(np.array([-avg_elbo]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name='Train')
+        update_trace(np.array([-avg_cond_log_like]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Train')
+        update_trace(np.array([avg_kl]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Train')
+        return output, handle_dict
+    return plotting_func
 
-        output = func(model, train_config, data, optimizers=optimizers, shuffle_data=shuffle_data)
 
-        if train:
-            avg_elbo, avg_cond_log_like, avg_kl = output
-            print avg_elbo, avg_cond_log_like, avg_kl
-            update_trace(np.array([-avg_elbo]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name='Train')
-            update_trace(np.array([-avg_cond_log_like]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Train')
-            update_trace(np.array([avg_kl]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Train')
-        else:
-
+def plot_model_vis(func):
+    """Wrapper around run function to plot the outputs in corresponding visdom windows."""
+    def plotting_func(model, train_config, data, epoch, handle_dict, vis=True):
+        output = func(model, train_config, data)
+        avg_elbo, avg_cond_log_like, avg_kl = output
+        update_trace(np.array([-avg_elbo]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name='Validation')
+        update_trace(np.array([-avg_cond_log_like]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Validation')
+        update_trace(np.array([avg_kl]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Validation')
+        if vis:
             pass
-
         return output, handle_dict
     return plotting_func
 
 
 def t_sne_plot():
+    """T-SNE visualization of high-dimensional state data."""
     pass
 

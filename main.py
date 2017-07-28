@@ -2,7 +2,7 @@ from config import train_config, arch
 from models import LatentVariableModel
 from util.data import load_data
 from util.misc import get_optimizers
-from util.train_val import run
+from util.train_val import train, run
 from util.plotting import initialize_env, initialize_plots, save_env
 import time
 
@@ -27,7 +27,7 @@ model = LatentVariableModel(train_config, arch, train_data.shape[1:])
 for epoch in range(10000):
     tic = time.time()
     # train
-    train(model, train_config, train_data, (enc_opt, dec_opt), epoch+1, handle_dict)
+    train(model, train_config, train_data, epoch+1, handle_dict, (enc_opt, dec_opt))
     toc = time.time()
     print 'Time: ' + str(toc - tic)
     print train_data.shape
