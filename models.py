@@ -19,7 +19,7 @@ class LatentVariableModel(object):
         self.kl_min = train_config['kl_min']
         self.top_size = arch['top_size']
         arch['n_units_dec'].append(arch['top_size'])
-        self.input_size = np.prod(data_size)
+        self.input_size = np.prod(data_size).astype(int)
         assert train_config['output_distribution'] in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
         self.output_distribution = train_config['output_distribution']
         self.levels = []
@@ -27,14 +27,14 @@ class LatentVariableModel(object):
         self.construct_model(arch)
         self.output_dist = None
         if self.output_distribution == 'bernoulli':
-            self.mean_output = Dense(arch['n_units_dec'][0], np.prod(self.input_size), non_linearity='sigmoid', weight_norm=arch['weight_norm_dec'])
+            self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity='sigmoid', weight_norm=arch['weight_norm_dec'])
         if self.output_distribution == 'gaussian':
-            self.mean_output = Dense(arch['n_units_dec'][0], np.prod(self.input_size), weight_norm=arch['weight_norm_dec'])
+            self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, weight_norm=arch['weight_norm_dec'])
             if self.constant_variances:
-                self.trainable_log_var = Variable(torch.zeros(data_size), requires_grad=True)
+                self.trainable_log_var = Variable(torch.zeros(self.input_size), requires_grad=True)
                 self.log_var_output = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
             else:
-                self.log_var_output = Dense(arch['n_units_dec'][0], data_size, weight_norm=arch['weight_norm_dec'])
+                self.log_var_output = Dense(arch['n_units_dec'][0], self.input_size, weight_norm=arch['weight_norm_dec'])
         self._cuda_device = None
         if train_config['cuda_device'] is not None:
             self.cuda(train_config['cuda_device'])
