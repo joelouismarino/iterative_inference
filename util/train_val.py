@@ -2,103 +2,158 @@ import torch
 from torch.autograd import Variable
 import numpy as np
 from random import shuffle
-from visualize import plot_images, plot_line, plot_metrics
+from plotting import plot_images, plot_line, plot_metrics
 
 
-# more general 'run' function (under construction)
-def run(model, train_config, data, mode='val', optimizers=None, shuffle_data=True):
-    pass
+def train_on_batch(model, batch, n_iterations, optimizers):
 
-@plot_metrics
-def train(model, train_config, data, mode='train', optimizers=None, shuffle_data=True):
-
-    batch_size = train_config['batch_size']
     enc_opt, dec_opt = optimizers
-    indices = np.arange(data.shape[0])
-    if shuffle_data:
-        shuffle(indices)
 
-    data = data.reshape(-1, 3072)
+    # initialize the model
+    enc_opt.zero_grad()
+    model.reset()
+    model.decode()
 
-    avg_elbo = avg_cond_log_like = avg_kl = 0
-
-    n_batch = int(data.shape[0]/batch_size)
-    for batch_num in range(n_batch):
-        #print batch_num * 1.0 / n_batch
-        data_index = batch_num*batch_size
-        batch = np.copy(data[indices[data_index:data_index+batch_size]])
-        batch = Variable(torch.from_numpy(batch))
-
-        enc_opt.zero_grad()
-        model.reset()
-        model.decode()
-        for i in range(train_config['n_iterations']-1):
-            model.encode(batch)
-            model.decode()
-            elbo = model.ELBO(batch)
-            elbo = -elbo
-            elbo.backward(retain_variables=True)
-        dec_opt.zero_grad()
+    # inference iterations
+    for i in range(n_iterations - 1):
         model.encode(batch)
         model.decode()
-        elbo, cond_log_like, kl = model.losses(batch)
-        avg_elbo += elbo.data.cpu().numpy()[0]
-        avg_cond_log_like += cond_log_like.data.cpu().numpy()[0]
-        avg_kl += kl.data.cpu().numpy()[0]
-        elbo = -elbo
-        elbo.backward(retain_variables=True)
-        enc_opt.step()
-        dec_opt.step()
+        elbo = model.elbo(batch, averaged=True)
+        (-elbo).backward(retain_variables=True)
 
-    avg_elbo /= n_batch
-    avg_cond_log_like /= n_batch
-    avg_kl /= n_batch
+    # final iteration
+    dec_opt.zero_grad()
+    model.encode(batch)
+    model.decode()
 
-    return avg_elbo[0], avg_cond_log_like[0], avg_kl[0]
+    elbo, cond_log_like, kl = model.losses(batch, averaged=True)
+    (-elbo).backward(retain_variables=True)
+
+    enc_opt.step()
+    dec_opt.step()
+
+    return elbo, cond_log_like, kl
 
 
 # todo: add importance sampling x 5000 samples
+def run_on_batch(model, batch, n_iterations):
+    """Runs the model on a single batch."""
+
+    total_elbo = np.zeros((n_iterations, batch.shape[0]))
+    total_cond_log_like = np.zeros((n_iterations, batch.shape[0]))
+    total_kl = np.zeros((n_iterations, batch.shape[0]))
+
+    # initialize the model
+    model.reset()
+    model.decode()
+
+    # inference iterations
+    for i in range(n_iterations - 1):
+        model.encode(batch)
+        model.decode()
+        elbo, cond_log_like, kl = model.losses(batch)
+        total_elbo[i] = elbo.data.cpu().numpy()[0]
+        total_cond_log_like[i] = cond_log_like.data.cpu().numpy()[0]
+        total_kl[i] = kl.data.cpu().numpy()[0]
+
+    # final iteration
+    model.encode(batch)
+    model.decode()
+
+    elbo, cond_log_like, kl = model.losses(batch)
+    total_elbo[-1] = elbo.data.cpu().numpy()[0]
+    total_cond_log_like[-1] = cond_log_like.data.cpu().numpy()[0]
+    total_kl[-1] = kl.data.cpu().numpy()[0]
+
+    return total_elbo, total_cond_log_like, total_kl
+
+
 @plot_metrics
-def validate(model, train_config, data_labels, vis=True):
+def run(model, train_config, data, vis=False):
+    """Runs the model on a set of data."""
 
     batch_size = train_config['batch_size']
-    data, labels = data_labels
-    data.reshape(-1, 3072)
+    n_examples = data.shape[0]
 
-    avg_elbo = avg_cond_log_like = avg_kl = 0
+    total_elbo = np.zeros((n_iterations, n_examples))
+    total_cond_log_like = np.zeros((n_iterations, n_examples))
+    total_kl = np.zeros((n_iterations, n_examples))
 
-    n_batch = int(data.shape[0] / batch_size)
+    indices = np.arange(n_examples)
+    if shuffle_data:
+        shuffle(indices)
+
+    n_batch = int(n_examples / batch_size)
     for batch_num in range(n_batch):
-        data_index = batch_num*batch_size
-        batch = np.copy(data[data_index:data_index+batch_size])
+        # get data batch
+        data_index = batch_num * batch_size
+        batch = np.copy(data[indices[data_index:data_index + batch_size]])
         batch = Variable(torch.from_numpy(batch))
 
-        model.reset()
-        model.decode()
-        elbo=cond_log_like=kl=0
-        for i in range(train_config['n_iterations']):
-            model.encode(batch)
-            model.decode()
-            elbo, cond_log_like, kl = model.losses(batch)
-        avg_elbo += elbo.data.cpu().numpy()[0]
-        avg_cond_log_like += cond_log_like.data.cpu().numpy()[0]
-        avg_kl += kl.data.cpu().numpy()[0]
+        elbo, cond_log_like, kl = run_on_batch(model, batch, train_config['n_iterations'])
 
-    if vis:
-        rand_batch_num = np.random.randint(n_batch)
-        rand_batch = np.copy(data[rand_batch_num:rand_batch_num+batch_size])
-        plot_images(rand_batch.reshape(-1, 32, 32, 3), caption='Random Batch')
-        rand_batch = Variable(torch.from_numpy(rand_batch))
-        model.reset()
-        output_dist = model.decode()
-        plot_images(output_dist.mean.data.cpu().numpy().reshape(-1, 32, 32, 3), caption='Iteration: 0')
-        for i in range(train_config['n_iterations']):
-            model.encode(rand_batch)
-            output_dist = model.decode()
-            plot_images(output_dist.mean.data.cpu().numpy().reshape(-1, 32, 32, 3), caption='Iteration: '+str(i+1))
-            elbo, cond_log_like, kl = model.losses(batch)
+        total_elbo[:, indices[data_index:data_index+batch_size]] = elbo
+        total_cond_log_like[:, indices[data_index:data_index + batch_size]] = cond_log_like
+        total_kl[:, indices[data_index:data_index + batch_size]] = kl
 
-        output_dist = model.decode(generate=True)
-        plot_images(output_dist.mean.data.cpu().numpy().reshape(-1, 32, 32, 3), caption='Generation')
+    return total_elbo, total_cond_log_like, total_kl
 
-    return avg_elbo, avg_cond_log_like, avg_kl
+
+@plot_metrics
+def train(model, train_config, data, optimizers, shuffle_data=True):
+
+    batch_size = train_config['batch_size']
+    n_examples = data.shape[0]
+
+    total_elbo = Variable(torch.zeros(1))
+    total_cond_log_like = Variable(torch.zeros(1))
+    total_kl = [Variable(torch.zeros(1)) for _ in range(len(model.levels))]
+
+    indices = np.arange(n_examples)
+    if shuffle_data:
+        shuffle(indices)
+
+    n_batch = int(n_examples / batch_size)
+    for batch_num in range(n_batch):
+        # get data batch
+        data_index = batch_num * batch_size
+        batch = np.copy(data[indices[data_index:data_index + batch_size]])
+        batch = Variable(torch.from_numpy(batch))
+        elbo, cond_log_like, kl = train_on_batch(model, batch, train_config['n_iterations'], optimizers)
+        total_elbo += elbo
+        total_cond_log_like += cond_log_like
+        for i in range(len(total_kl)):
+            total_kl[i] += kl
+
+    total_elbo /= n_batch
+    total_cond_log_like /= n_batch
+    for i in range(len(total_kl)):
+        total_kl[i] /= n_batch
+
+    total_elbo = total_elbo.data.cpu().numpy()[0]
+    total_cond_log_like = total_cond_log_like.data.cpu().numpy()[0]
+    for i in range(len(total_kl)):
+        total_kl[i] = total_kl[i].data.cpu().numpy()[0]
+
+    return total_elbo, total_cond_log_like, total_kl
+
+
+
+"""
+visualization code:
+rand_batch_num = np.random.randint(n_batch)
+rand_batch = np.copy(data[rand_batch_num:rand_batch_num+batch_size])
+plot_images(rand_batch.reshape(-1, 32, 32, 3), caption='Random Batch')
+rand_batch = Variable(torch.from_numpy(rand_batch))
+model.reset()
+output_dist = model.decode()
+plot_images(output_dist.mean.data.cpu().numpy().reshape(-1, 32, 32, 3), caption='Iteration: 0')
+for i in range(train_config['n_iterations']):
+    model.encode(rand_batch)
+    output_dist = model.decode()
+    plot_images(output_dist.mean.data.cpu().numpy().reshape(-1, 32, 32, 3), caption='Iteration: '+str(i+1))
+    elbo, cond_log_like, kl = model.losses(batch)
+
+output_dist = model.decode(generate=True)
+plot_images(output_dist.mean.data.cpu().numpy().reshape(-1, 32, 32, 3), caption='Generation')
+"""

@@ -148,31 +148,44 @@ class LatentVariableModel(object):
             self.output_dist = DiagonalGaussian(output_mean, output_log_var)
         return self.output_dist
 
-    def kl_divergences(self):
-        # returns a list containing kl divergences at each level, for all examples
+    def kl_divergences(self, averaged=False):
+        # returns a list containing kl divergences at each level
         kl = []
         for latent_level in self.levels:
             kl.append(torch.clamp(latent_level.kl_divergence(), min=self.kl_min).sum(1))
-        return kl
+        if averaged:
+            [level_kl.mean(0) for level_kl in kl]
+        else:
+            return kl
 
-    def conditional_log_likelihoods(self, input):
-        # returns the conditional likelihoods, for all examples
+    def conditional_log_likelihoods(self, input, averaged=False):
+        # returns the conditional likelihoods
         if self._cuda_device is not None:
             input = input.cuda(self._cuda_device)
-        return self.output_dist.log_prob(sample=input).sum(1)
+        if averaged:
+            return self.output_dist.log_prob(sample=input).sum(1).mean(0)
+        else:
+            return self.output_dist.log_prob(sample=input).sum(1)
 
-    def ELBO(self, input):
-        # returns the ELBO, averaged across examples
+    def elbo(self, input, averaged=False):
+        # returns the ELBO
         cond_like = self.conditional_log_likelihoods(input)
         kl = sum(self.kl_divergences())
-        elbo = cond_like - kl
-        return elbo.mean(0)
+        lower_bound = cond_like - kl
+        if averaged:
+            return lower_bound.mean(0)
+        else:
+            return lower_bound
 
-    def losses(self, input):
+    def losses(self, input, averaged=False):
+        # returns all losses
         cond_log_like = self.conditional_log_likelihoods(input)
-        kl = sum(self.kl_divergences())
-        elbo = cond_log_like - kl
-        return elbo.mean(0), cond_log_like.mean(0), kl.mean(0)
+        kl = self.kl_divergences()
+        lower_bound = cond_log_like - kl
+        if averaged:
+            return lower_bound.mean(0), cond_log_like.mean(0), [level_kl.mean(0) for level_kl in kl]
+        else:
+            return lower_bound, cond_log_like, kl
 
     def reset(self):
         # reset the posterior estimate
@@ -180,6 +193,7 @@ class LatentVariableModel(object):
             latent_level.reset()
 
     def trainable_state(self):
+        # make the posterior estimate trainable
         for latent_level in self.levels:
             latent_level.trainable_state()
 
@@ -207,7 +221,7 @@ class LatentVariableModel(object):
         return params
 
     def state_parameters(self):
-        # return a list containing all of the parameters of the posterior
+        # return a list containing all of the parameters of the posterior (state)
         states = []
         for latent_level in self.levels:
             states.extend(list(latent_level.state_parameters()))
