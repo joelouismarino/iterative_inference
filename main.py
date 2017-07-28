@@ -3,11 +3,13 @@ from models import LatentVariableModel
 from util.data import load_data
 from util.misc import get_optimizers
 from util.train_val import train, validate
-from util.visualize import initialize_environment, save_environment
+from util.visualize import initialize_environment, initialize_plots, save_environment
+import time
 
 # todo: set up logging
 global vis
 vis = initialize_environment('test')
+handle_dict = initialize_plots()
 
 data_path = '/home/joe/Datasets'
 
@@ -20,8 +22,12 @@ model = LatentVariableModel(train_config, arch, train_data.shape[1:])
 # get optimizers
 (enc_opt, enc_sched), (dec_opt, dec_sched) = get_optimizers(train_config, model)
 
-for epoch in range(1):
-    train(model, train_config, train_data.reshape(-1, 3072), (enc_opt, dec_opt))
-    validate(model, train_config, (val_data, val_labels))
-    save_environment()
+for epoch in range(100):
+    tic = time.time()
+    train(model, train_config, train_data, epoch+1, handle_dict, mode='train', optimizers=(enc_opt, dec_opt))
+    toc = time.time()
+    print 'Time: ' + str(toc - tic)
+    print train_data.shape
+    #validate(model, train_config, (val_data, val_labels))
+    #save_environment()
     #enc_sched.step(); dec_sched.step()

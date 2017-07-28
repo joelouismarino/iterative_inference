@@ -6,7 +6,7 @@ train_config = {
     'batch_size': 64,
     'n_iterations': 5,
     'learning_rate': 0.0002,
-    'kl_min': 1e-5,
+    'kl_min': 0,
     'cuda_device': 1
 }
 
