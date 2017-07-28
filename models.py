@@ -19,7 +19,7 @@ class LatentVariableModel(object):
         self.kl_min = train_config['kl_min']
         self.top_size = arch['top_size']
         arch['n_units_dec'].append(arch['top_size'])
-        self.input_size = data_size
+        self.input_size = np.prod(data_size)
         assert train_config['output_distribution'] in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
         self.output_distribution = train_config['output_distribution']
         self.levels = []
@@ -31,10 +31,10 @@ class LatentVariableModel(object):
         if self.output_distribution == 'gaussian':
             self.mean_output = Dense(arch['n_units_dec'][0], np.prod(self.input_size), weight_norm=arch['weight_norm_dec'])
             if self.constant_variances:
-                self.trainable_log_var = Variable(torch.zeros(np.prod(data_size)), requires_grad=True)
+                self.trainable_log_var = Variable(torch.zeros(data_size), requires_grad=True)
                 self.log_var_output = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
             else:
-                self.log_var_output = Dense(arch['n_units_dec'][0], np.prod(data_size), weight_norm=arch['weight_norm_dec'])
+                self.log_var_output = Dense(arch['n_units_dec'][0], data_size, weight_norm=arch['weight_norm_dec'])
         self._cuda_device = None
         if train_config['cuda_device'] is not None:
             self.cuda(train_config['cuda_device'])
@@ -82,7 +82,7 @@ class LatentVariableModel(object):
 
     def get_input_encoding_size(self, level_num, arch):
         if level_num == 0:
-            latent_size = np.prod(self.input_size)
+            latent_size = self.input_size
             det_size = 0
         else:
             latent_size = arch['n_latent'][level_num-1]
@@ -124,7 +124,7 @@ class LatentVariableModel(object):
         # encode the input into a posterior estimate
         if self._cuda_device is not None:
             input = input.cuda(self._cuda_device)
-        h = self.get_input_encoding(input)
+        h = self.get_input_encoding(input.view(-1, self.input_size))
         for latent_level in self.levels:
             h = latent_level.encode(h)
 
@@ -162,6 +162,7 @@ class LatentVariableModel(object):
         # returns the conditional likelihoods
         if self._cuda_device is not None:
             input = input.cuda(self._cuda_device)
+        input = input.view(-1, self.input_size)
         if averaged:
             return self.output_dist.log_prob(sample=input).sum(1).mean(0)
         else:
@@ -169,7 +170,7 @@ class LatentVariableModel(object):
 
     def elbo(self, input, averaged=False):
         # returns the ELBO
-        cond_like = self.conditional_log_likelihoods(input)
+        cond_like = self.conditional_log_likelihoods(input.view(-1, self.input_size))
         kl = sum(self.kl_divergences())
         lower_bound = cond_like - kl
         if averaged:
@@ -179,7 +180,7 @@ class LatentVariableModel(object):
 
     def losses(self, input, averaged=False):
         # returns all losses
-        cond_log_like = self.conditional_log_likelihoods(input)
+        cond_log_like = self.conditional_log_likelihoods(input.view(-1, self.input_size))
         kl = self.kl_divergences()
         lower_bound = cond_log_like - kl
         if averaged:
