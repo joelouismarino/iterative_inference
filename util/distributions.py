@@ -28,7 +28,7 @@ class DiagonalGaussian(object):
         return -0.5 * (self.log_var + np.log(2 * np.pi) + torch.pow(sample - self.mean, 2) / (torch.exp(self.log_var) + 1e-7))
 
     def reset_mean(self):
-        if self._cuda_device:
+        if self._cuda_device is not None:
             self.mean = torch.zeros(self.mean.size()).cuda(self._cuda_device)
         else:
             self.mean = torch.zeros(self.mean.size())
@@ -36,7 +36,7 @@ class DiagonalGaussian(object):
         self._sample = None
 
     def reset_log_var(self):
-        if self._cuda_device:
+        if self._cuda_device is not None:
             self.log_var = torch.zeros(self.log_var.size()).cuda(self._cuda_device)
         else:
             self.log_var = torch.zeros(self.log_var.size())

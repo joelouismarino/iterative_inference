@@ -11,13 +11,43 @@ def initialize_env(env='main', port=8097):
     return vis
 
 
-def initialize_plots():
+def initialize_plots(train_config, arch):
     nans = np.zeros((1, 2), dtype=float)
     nans.fill(np.nan)
+
+    # plots for average metrics on train and validation set
+    kl_legend = []
+    for mode in ['Train', 'Validation']:
+        for level in range(len(arch['n_latent'])):
+            kl_legend.append(mode + ', Level ' + str(level))
+    kl_nans = np.zeros((1, 2 * len(arch['n_latent'])))
+    kl_nans.fill(np.nan)
     elbo_handle = plot_line(nans, np.ones((1, 2)), legend=['Train', 'Validation'], title='ELBO', xlabel='Epochs', ylabel='-ELBO (Nats)', xformat='log', yformat='log')
     cond_log_like_handle = plot_line(nans, np.ones((1, 2)), legend=['Train', 'Validation'], title='Conditional Log Likelihood', xlabel='Epochs', ylabel='-log P(x | z) (Nats)', xformat='log', yformat='log')
-    kl_handle = plot_line(nans, np.ones((1, 2)), legend=['Train', 'Validation'], title='KL Divergence', xlabel='Epochs', ylabel='KL(q || p) (Nats)', xformat='log', yformat='log')
-    return dict(elbo=elbo_handle, cond_log_like=cond_log_like_handle, kl=kl_handle)
+    kl_handle = plot_line(kl_nans, np.ones((1, 2 * len(arch['n_latent']))), legend=kl_legend, title='KL Divergence', xlabel='Epochs', ylabel='KL(q || p) (Nats)', xformat='log', yformat='log')
+
+    # plot of average improvement over iterations on validation set
+    kl_legend = []
+
+    for level in range(len(arch['n_latent'])):
+        kl_legend.append('Level ' + str(level))
+
+    kl_nans = None
+    indices = None
+    if len(arch['n_latent']) > 1:
+        kl_nans = np.zeros((1, len(arch['n_latent'])))
+        kl_nans.fill(np.nan)
+        indices = np.ones((1, len(arch['n_latent'])))
+    else:
+        kl_nans = np.array(np.nan).reshape(1)
+        indices = np.ones(1)
+
+    elbo_improvement_handle = plot_line(np.array(np.nan).reshape(1), np.ones(1), legend=['ELBO'], title='Ave. Improvement in ELBO Over Inference Iterations', xlabel='Epochs', ylabel='Relative Improvement (%)', xformat='log')
+    recon_improvement_handle = plot_line(np.array(np.nan).reshape(1), np.ones(1), legend=['log P(x | z)'], title='Ave. Improvement in Reconstruction Over Inference Iterations', xlabel='Epochs', ylabel='Relative Improvement (%)', xformat='log')
+    kl_improvement_handle = plot_line(kl_nans, indices, legend=kl_legend, title='Ave. Improvement in KL Divergence Over Inference Iterations', xlabel='Epochs', ylabel='Relative Improvement (%)', xformat='log')
+
+    return dict(elbo=elbo_handle, cond_log_like=cond_log_like_handle, kl=kl_handle, elbo_improvement=elbo_improvement_handle,
+                recon_improvement=recon_improvement_handle, kl_improvement=kl_improvement_handle)
 
 
 def save_env():
@@ -58,11 +88,12 @@ def update_trace(Y, X, win, name):
 def plot_train(func):
     """Wrapper around training function to plot the outputs in corresponding visdom windows."""
     def plotting_func(model, train_config, data, epoch, handle_dict, optimizers, shuffle_data=True):
-        output = func(model, train_config, data, optimizers, shuffle_data=True)
+        output = func(model, train_config, data, optimizers, shuffle_data=shuffle_data)
         avg_elbo, avg_cond_log_like, avg_kl = output
         update_trace(np.array([-avg_elbo]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name='Train')
         update_trace(np.array([-avg_cond_log_like]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Train')
-        #update_trace(np.array([avg_kl]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Train')
+        for level in range(len(model.levels)):
+            update_trace(np.array([avg_kl[level]]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Train, Level ' + str(level))
         return output, handle_dict
     return plotting_func
 

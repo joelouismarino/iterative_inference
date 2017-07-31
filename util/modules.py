@@ -260,10 +260,10 @@ class GaussianVariable(object):
         return sample
 
     def error(self):
-        return self.posterior.sample() - self.prior.mean
+        return self.posterior.sample() - self.prior.mean.detach()
 
     def norm_error(self):
-        return self.error() / (torch.exp(self.prior.log_var) + 1e-7)
+        return self.error() / (torch.exp(self.prior.log_var.detach()) + 1e-7)
 
     def kl_divergence(self):
         return self.posterior.log_prob(self.posterior.sample()) - self.prior.log_prob(self.posterior.sample())
@@ -428,8 +428,7 @@ class LatentLevel(object):
 
         self.encoder = MultiLayerPerceptron(**encoder_arch)
         self.decoder = MultiLayerPerceptron(**decoder_arch)
-        self.latent = GaussianVariable(self.batch_size, self.n_latent, constant_prior_variances, variable_input_sizes,
-                                       variable_update_form)
+        self.latent = GaussianVariable(self.batch_size, self.n_latent, constant_prior_variances, variable_input_sizes, variable_update_form)
         self.deterministic_encoder = Dense(variable_input_sizes[0], n_det[0]) if n_det[0] > 0 else None
         self.deterministic_decoder = Dense(variable_input_sizes[1], n_det[1]) if n_det[1] > 0 else None
 

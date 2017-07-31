@@ -11,7 +11,7 @@ import time
 
 global vis
 vis = initialize_env('test')
-handle_dict = initialize_plots()
+handle_dict = initialize_plots(train_config, arch)
 
 data_path = '/home/joe/Datasets'
 
@@ -24,7 +24,8 @@ model = LatentVariableModel(train_config, arch, train_data.shape[1:])
 # get optimizers
 (enc_opt, enc_sched), (dec_opt, dec_sched) = get_optimizers(train_config, model)
 
-for epoch in range(10000):
+for epoch in range(10):
+    print 'Epoch: ' + str(epoch+1)
     tic = time.time()
     # train
     train(model, train_config, train_data, epoch+1, handle_dict, (enc_opt, dec_opt))

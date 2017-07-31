@@ -23,12 +23,13 @@ class LatentVariableModel(object):
         assert train_config['output_distribution'] in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
         self.output_distribution = train_config['output_distribution']
         self.levels = []
-        self.top_level = None
         self.construct_model(arch)
         self.output_dist = None
         if self.output_distribution == 'bernoulli':
+            self.output_dist = Bernoulli(None)
             self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity='sigmoid', weight_norm=arch['weight_norm_dec'])
         if self.output_distribution == 'gaussian':
+            self.output_dist = DiagonalGaussian(None, None)
             self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, weight_norm=arch['weight_norm_dec'])
             if self.constant_variances:
                 self.trainable_log_var = Variable(torch.zeros(self.input_size), requires_grad=True)
@@ -39,7 +40,6 @@ class LatentVariableModel(object):
         if train_config['cuda_device'] is not None:
             self.cuda(train_config['cuda_device'])
 
-    # todo: take encoding form into account for encoder input size
     def construct_model(self, arch):
         # construct the model from the architecture dictionary
 
@@ -78,8 +78,6 @@ class LatentVariableModel(object):
 
             self.levels.append(latent_level)
 
-        self.top_level = Variable(torch.zeros(self.batch_size, self.top_size), requires_grad=True)
-
     def get_input_encoding_size(self, level_num, arch):
         if level_num == 0:
             latent_size = self.input_size
@@ -109,12 +107,12 @@ class LatentVariableModel(object):
         if 'posterior' in self.encoding_form:
             encoding = input
         if 'bottom_error' in self.encoding_form:
-            error = input - self.output_dist.mean
+            error = input - self.output_dist.mean.detach()
             encoding = torch.cat((encoding, error)) if encoding else error
         if 'bottom_norm_error' in self.encoding_form:
-            error = input - self.output_dist.mean
+            error = input - self.output_dist.mean.detach()
             if self.output_distribution == 'gaussian':
-                norm_error = error / torch.exp(self.output_dist.log_var)
+                norm_error = error / torch.exp(self.output_dist.log_var.detach())
             elif self.output_distribution == 'bernoulli':
                 pass
             encoding = torch.cat((encoding, norm_error)) if encoding else norm_error
@@ -130,22 +128,21 @@ class LatentVariableModel(object):
 
     def decode(self, generate=False):
         # decode the posterior or prior estimate
-        h = self.top_level
+        h = Variable(torch.zeros(self.batch_size, self.top_size))
         if self._cuda_device is not None:
             h = h.cuda(self._cuda_device)
         for latent_level in self.levels:
             h = latent_level.decode(h, generate)
 
-        if self.output_distribution == 'bernoulli':
-            output_mean = self.mean_output(h)
-            self.output_dist = Bernoulli(output_mean)
-        elif self.output_distribution == 'gaussian':
-            output_mean = self.mean_output(h)
+        output_mean = self.mean_output(h)
+        self.output_dist.mean = output_mean
+
+        if self.output_distribution == 'gaussian':
             if self.constant_variances:
                 output_log_var = self.log_var_output
             else:
                 output_log_var = self.log_var_output(h)
-            self.output_dist = DiagonalGaussian(output_mean, output_log_var)
+            self.output_dist.log_var = output_log_var
         return self.output_dist
 
     def kl_divergences(self, averaged=False):

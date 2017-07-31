@@ -1,19 +1,19 @@
 
 # training set-up
 train_config = {
-    'dataset': 'CIFAR_10',
-    'output_distribution': 'gaussian',
+    'dataset': 'binarized_MNIST',
+    'output_distribution': 'bernoulli',
     'batch_size': 64,
-    'n_iterations': 5,
+    'n_iterations': 1,
     'learning_rate': 0.0002,
     'kl_min': 0,
-    'cuda_device': 1
+    'cuda_device': 0
 }
 
 # model architecture
 arch = {
-    'encoding_form': ['bottom_error', 'top_error'],
-    'variable_update_form': 'highway',
+    'encoding_form': ['posterior'],
+    'variable_update_form': 'direct',
     'whiten_input': False,
     'constant_prior_variances': False,
 
