@@ -159,7 +159,7 @@ class LatentVariableModel(object):
         # returns the conditional likelihoods
         if self._cuda_device is not None:
             input = input.cuda(self._cuda_device)
-        input = input.view(-1, self.input_size)
+        input = input.view(self.batch_size, self.input_size)
         if averaged:
             return self.output_dist.log_prob(sample=input).sum(1).mean(0)
         else:
@@ -228,7 +228,6 @@ class LatentVariableModel(object):
     def cuda(self, device_id=0):
         # place the model on the GPU
         self._cuda_device = device_id
-        self.top_level = self.top_level.cuda(device_id)
         for latent_level in self.levels:
             latent_level.cuda(device_id)
         self.mean_output.cuda(device_id)

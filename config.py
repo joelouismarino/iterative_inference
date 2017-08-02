@@ -5,7 +5,7 @@ train_config = {
     'output_distribution': 'bernoulli',
     'batch_size': 64,
     'n_iterations': 1,
-    'learning_rate': 0.0002,
+    'learning_rate': 0.002,
     'kl_min': 0,
     'cuda_device': 0
 }

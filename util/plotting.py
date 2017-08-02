@@ -101,13 +101,16 @@ def plot_train(func):
 def plot_model_vis(func):
     """Wrapper around run function to plot the outputs in corresponding visdom windows."""
     def plotting_func(model, train_config, data, epoch, handle_dict, vis=True):
-        output = func(model, train_config, data)
-        avg_elbo, avg_cond_log_like, avg_kl = output
-        update_trace(np.array([-avg_elbo]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name='Validation')
-        update_trace(np.array([-avg_cond_log_like]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Validation')
-        update_trace(np.array([avg_kl]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Validation')
+        output = func(model, train_config, data, vis=vis)
+        avg_elbo, avg_cond_log_like, avg_kl, reconstructions, samples = output
+        #update_trace(np.array([-avg_elbo]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name='Validation')
+        #update_trace(np.array([-avg_cond_log_like]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Validation')
+        #update_trace(np.array([avg_kl]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Validation')
         if vis:
-            pass
+            data_shape = data.shape[1:]
+            print reconstructions.shape
+            plot_images(reconstructions[:, 1].reshape([train_config['batch_size']]+list(data_shape)))
+            plot_images(samples.reshape([train_config['batch_size']]+list(data_shape)))
         return output, handle_dict
     return plotting_func
 

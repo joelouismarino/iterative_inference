@@ -249,7 +249,7 @@ class GaussianVariable(object):
             mean = mean_gate * self.posterior.mean + (1 - mean_gate) * mean
             log_var = log_var_gate * self.posterior.log_var + (1 - log_var_gate) * log_var
         self.posterior.mean, self.posterior.log_var = mean, log_var
-        return self.posterior.sample()
+        return self.posterior.sample(resample=True)
 
     def decode(self, input, generate=False):
         # decode the mean and log variance, update, return sample
