@@ -2,10 +2,9 @@ import torch
 from torch.autograd import Variable
 import numpy as np
 from random import shuffle
-from plotting import plot_images, plot_line, plot_train, plot_model_vis
 
-import time
-import matplotlib.pyplot as plt
+from logs import log_train, log_vis
+from plotting import plot_images, plot_line, plot_train, plot_model_vis
 
 
 def train_on_batch(model, batch, n_iterations, optimizers):
@@ -51,7 +50,7 @@ def train_on_batch(model, batch, n_iterations, optimizers):
 
 # todo: add importance sampling x 5000 samples
 def run_on_batch(model, batch, n_iterations, vis=False):
-    """Runs the model on a single batch."""
+    """Runs the model on a single batch. If visualizing, stores posteriors, priors, and output distributions."""
 
     batch_shape = list(batch.size())
     total_elbo = np.zeros((batch.size()[0], n_iterations+1))
@@ -78,10 +77,10 @@ def run_on_batch(model, batch, n_iterations, vis=False):
     if vis:
         reconstructions[:, 0] = model.output_dist.mean.data.cpu().numpy().reshape(batch_shape)
         for level in range(len(model.levels)):
-            posterior[level][:, 0, 0, :] = model.levels[level].latent.posterior.mean.data.cpu().numpy()[0]
-            posterior[level][:, 0, 1, :] = model.levels[level].latent.posterior.log_var.data.cpu().numpy()[0]
-            prior[level][:, 0, 0, :] = model.levels[level].latent.prior.mean.data.cpu().numpy()[0]
-            prior[level][:, 0, 1, :] = model.levels[level].latent.prior.log_var.data.cpu().numpy()[0]
+            posterior[level][:, 0, 0, :] = model.levels[level].latent.posterior.mean.data.cpu().numpy()
+            posterior[level][:, 0, 1, :] = model.levels[level].latent.posterior.log_var.data.cpu().numpy()
+            prior[level][:, 0, 0, :] = model.levels[level].latent.prior.mean.data.cpu().numpy()
+            prior[level][:, 0, 1, :] = model.levels[level].latent.prior.log_var.data.cpu().numpy()
 
     # inference iterations
     for i in range(1, n_iterations+1):
@@ -95,119 +94,90 @@ def run_on_batch(model, batch, n_iterations, vis=False):
         if vis:
             reconstructions[:, i] = model.output_dist.mean.data.cpu().numpy().reshape(batch_shape)
             for level in range(len(model.levels)):
-                posterior[level][:, i, 0, :] = model.levels[level].latent.posterior.mean.data.cpu().numpy()[0]
-                posterior[level][:, i, 1, :] = model.levels[level].latent.posterior.log_var.data.cpu().numpy()[0]
-                prior[level][:, i, 0, :] = model.levels[level].latent.prior.mean.data.cpu().numpy()[0]
-                prior[level][:, i, 1, :] = model.levels[level].latent.prior.log_var.data.cpu().numpy()[0]
+                posterior[level][:, i, 0, :] = model.levels[level].latent.posterior.mean.data.cpu().numpy()
+                posterior[level][:, i, 1, :] = model.levels[level].latent.posterior.log_var.data.cpu().numpy()
+                prior[level][:, i, 0, :] = model.levels[level].latent.prior.mean.data.cpu().numpy()
+                prior[level][:, i, 1, :] = model.levels[level].latent.prior.log_var.data.cpu().numpy()
 
     return total_elbo, total_cond_log_like, total_kl, reconstructions, posterior, prior
 
 
 @plot_model_vis
-def run(model, train_config, data, vis=False):
+@log_vis
+def run(model, train_config, data_loader, vis=False):
     """Runs the model on a set of data."""
 
     batch_size = train_config['batch_size']
     n_iterations = train_config['n_iterations']
-    n_examples = data.shape[0]
+    n_examples = batch_size * len(iter(data_loader))
+    data_shape = list(next(iter(data_loader))[0].size())[1:]
 
     total_elbo = np.zeros((n_examples, n_iterations+1))
     total_cond_log_like = np.zeros((n_examples, n_iterations+1))
     total_kl = [np.zeros((n_examples, n_iterations+1)) for _ in range(len(model.levels))]
 
-    n_batch = int(n_examples / batch_size)
-    for batch_num in range(n_batch):
-        # get data batch
-        data_index = batch_num * batch_size
-        batch = np.copy(data[data_index:data_index + batch_size])
-        batch = Variable(torch.from_numpy(batch))
+    total_labels = np.zeros(n_examples)
+
+    total_recon = total_posterior = total_prior = None
+    if vis:
+        total_recon = np.zeros([n_examples, n_iterations + 1] + data_shape)
+        total_posterior = [np.zeros([n_examples, n_iterations + 1, 2, model.levels[level].n_latent]) for level in range(len(model.levels))]
+        total_prior = [np.zeros([n_examples, n_iterations + 1, 2, model.levels[level].n_latent]) for level in range(len(model.levels))]
+
+    for batch_index, (batch, labels) in enumerate(data_loader):
+        batch = Variable(batch)
+        if train_config['cuda_device'] is not None:
+            batch = batch.cuda(train_config['cuda_device'])
 
         if model.output_distribution == 'bernoulli':
             batch = torch.bernoulli(batch / 255.)
 
-        elbo, cond_log_like, kl, _, _, _ = run_on_batch(model, batch, n_iterations)
+        elbo, cond_log_like, kl, recon, posterior, prior = run_on_batch(model, batch, n_iterations, vis)
 
+        data_index = batch_index * batch_size
         total_elbo[data_index:data_index + batch_size, :] = elbo
         total_cond_log_like[data_index:data_index + batch_size, :] = cond_log_like
-        for level in range(len(kl)):
+        for level in range(len(model.levels)):
             total_kl[level][data_index:data_index + batch_size, :] = kl[level]
 
-    # handle last fraction of a batch
-    remainder = n_examples % batch_size
-    if remainder > 0:
-        batch = np.zeros(([batch_size] + list(data.shape[1:]))).astype(data.dtype)
-        batch[:remainder] = np.copy(data[n_batch*batch_size:])
-        batch = Variable(torch.from_numpy(batch))
+        total_labels[data_index:data_index + batch_size] = labels.numpy()
 
-        if model.output_distribution == 'bernoulli':
-            batch = torch.bernoulli(batch / 255.)
+        if vis:
+            total_recon[data_index:data_index + batch_size] = recon
+            for level in range(len(model.levels)):
+                total_posterior[level][data_index:data_index + batch_size] = posterior[level]
+                total_prior[level][data_index:data_index + batch_size] = prior[level]
 
-        elbo, cond_log_like, kl, _, _, _ = run_on_batch(model, batch, n_iterations)
-
-        total_elbo[n_batch*batch_size:, :] = elbo[:remainder, :]
-        total_cond_log_like[n_batch*batch_size:, :] = cond_log_like[:remainder, :]
-        for level in range(len(kl)):
-            total_kl[level][n_batch*batch_size:, :] = kl[level][:remainder, :]
-
-    reconstructions = samples = None
+    samples = None
     if vis:
-
-        # visualize the reconstruction of the first batch
-        first_batch = np.copy(data[:batch_size])
-        first_batch = Variable(torch.from_numpy(first_batch))
-        if model.output_distribution == 'bernoulli':
-            first_batch = torch.bernoulli(first_batch / 255.)
-        elbo, cond_log_like, kl, reconstructions, posterior, prior = run_on_batch(model, first_batch, train_config['n_iterations'], vis)
-
         # visualize samples from the model
-        samples = model.decode(generate=True).mean.data.cpu().numpy().reshape([batch_size]+list(data.shape[1:]))
+        samples = model.decode(generate=True).mean.data.cpu().numpy().reshape([batch_size]+data_shape)
 
-
-
-    return total_elbo, total_cond_log_like, total_kl, reconstructions, samples
+    return total_elbo, total_cond_log_like, total_kl, total_labels, total_recon, total_posterior, total_prior, samples
 
 
 @plot_train
-def train(model, train_config, data, optimizers, shuffle_data=True):
+@log_train
+def train(model, train_config, data_loader, optimizers):
 
-    batch_size = train_config['batch_size']
-    n_examples = data.shape[0]
+    avg_elbo = []
+    avg_cond_log_like = []
+    avg_kl = [[] for _ in range(len(model.levels))]
 
-    avg_elbo = 0.
-    avg_cond_log_like = 0.
-    avg_kl = [0. for _ in range(len(model.levels))]
-
-    indices = np.arange(n_examples)
-    if shuffle_data:
-        shuffle(indices)
-
-    ave_time = []
-
-    n_batch = int(n_examples / batch_size)
-    for batch_num in range(n_batch):
-        # get data batch
-        data_index = batch_num * batch_size
-        batch = np.copy(data[indices[data_index:data_index + batch_size]])
-        batch = Variable(torch.from_numpy(batch))
+    for batch, _ in data_loader:
+        batch = Variable(batch)
+        if train_config['cuda_device'] is not None:
+            batch = batch.cuda(train_config['cuda_device'])
 
         if model.output_distribution == 'bernoulli':
             batch = torch.bernoulli(batch / 255.)
 
-        tic = time.time()
         elbo, cond_log_like, kl = train_on_batch(model, batch, train_config['n_iterations'], optimizers)
-        toc = time.time()
-        ave_time.append(toc - tic)
 
-        avg_elbo += elbo[0]
-        avg_cond_log_like += cond_log_like[0]
-        for i in range(len(avg_kl)):
-            avg_kl[i] += kl[i][0]
+        avg_elbo.append(elbo[0])
+        avg_cond_log_like.append(cond_log_like[0])
+        for l in range(len(avg_kl)):
+            avg_kl[l].append(kl[l][0])
 
-    avg_elbo /= n_batch
-    avg_cond_log_like /= n_batch
-    for i in range(len(avg_kl)):
-        avg_kl[i] /= n_batch
-
-    print avg_elbo, avg_cond_log_like, avg_kl
-    return avg_elbo, avg_cond_log_like, avg_kl
+    return np.mean(avg_elbo), np.mean(avg_cond_log_like), [np.mean(avg_kl[l]) for l in range(len(model.levels))]
 

@@ -3,16 +3,16 @@
 train_config = {
     'dataset': 'binarized_MNIST',
     'output_distribution': 'bernoulli',
-    'batch_size': 64,
-    'n_iterations': 5,
-    'learning_rate': 0.0002,
+    'batch_size': 256,
+    'n_iterations': 1,
+    'learning_rate': 0.002,
     'kl_min': 0,
     'cuda_device': 0
 }
 
 # model architecture
 arch = {
-    'encoding_form': ['bottom_error', 'top_error'],
+    'encoding_form': ['posterior'],
     'variable_update_form': 'direct',
     'whiten_input': False,
     'constant_prior_variances': False,

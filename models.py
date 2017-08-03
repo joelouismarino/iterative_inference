@@ -106,7 +106,7 @@ class LatentVariableModel(object):
             assert self.output_dist is not None, 'Cannot encode error. Output distribution is None.'
         encoding = None
         if 'posterior' in self.encoding_form:
-            encoding = input
+            encoding = input - 0.5
         if 'bottom_error' in self.encoding_form:
             error = input - self.output_dist.mean.detach()
             encoding = torch.cat((encoding, error)) if encoding else error
