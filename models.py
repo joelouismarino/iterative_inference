@@ -6,6 +6,7 @@ import numpy as np
 from util.distributions import DiagonalGaussian, Bernoulli
 from util.modules import Dense, MultiLayerPerceptron, GaussianVariable, LatentLevel
 
+# todo: allow for saving model
 # todo: add support for multiple samples to encode, decode
 # todo: allow for printing out the model architecture
 

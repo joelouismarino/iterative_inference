@@ -8,6 +8,9 @@ import time
 
 # todo: set up logging
 # todo: better visualization
+# todo: better data preprocessing (normalization, etc.)
+# todo: put entire dataset into torch Variable
+# todo: add support for online learning
 
 global vis
 vis = initialize_env('test')
@@ -23,6 +26,8 @@ model = LatentVariableModel(train_config, arch, train_data.shape[1:])
 
 # get optimizers
 (enc_opt, enc_sched), (dec_opt, dec_sched) = get_optimizers(train_config, model)
+
+output = None
 
 for epoch in range(50):
     print 'Epoch: ' + str(epoch+1)

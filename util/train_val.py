@@ -132,6 +132,23 @@ def run(model, train_config, data, vis=False):
         for level in range(len(kl)):
             total_kl[level][data_index:data_index + batch_size, :] = kl[level]
 
+    # handle last fraction of a batch
+    remainder = n_examples % batch_size
+    if remainder > 0:
+        batch = np.zeros(([batch_size] + list(data.shape[1:]))).astype(data.dtype)
+        batch[:remainder] = np.copy(data[n_batch*batch_size:])
+        batch = Variable(torch.from_numpy(batch))
+
+        if model.output_distribution == 'bernoulli':
+            batch = torch.bernoulli(batch / 255.)
+
+        elbo, cond_log_like, kl, _, _, _ = run_on_batch(model, batch, n_iterations)
+
+        total_elbo[n_batch*batch_size:, :] = elbo[:remainder, :]
+        total_cond_log_like[n_batch*batch_size:, :] = cond_log_like[:remainder, :]
+        for level in range(len(kl)):
+            total_kl[level][n_batch*batch_size:, :] = kl[level][:remainder, :]
+
     reconstructions = samples = None
     if vis:
 
@@ -149,43 +166,7 @@ def run(model, train_config, data, vis=False):
 
     return total_elbo, total_cond_log_like, total_kl, reconstructions, samples
 
-"""
-@plot_train
-def train(model, train_config, data, optimizers, shuffle_data=True):
 
-
-    batch_size = train_config['batch_size']
-    n_examples = data.shape[0]
-
-    indices = np.arange(n_examples)
-    if shuffle_data:
-        shuffle(indices)
-
-    ave_time = []
-
-    n_batch = int(n_examples / batch_size)
-    for batch_num in range(n_batch):
-        # get data batch
-        data_index = batch_num * batch_size
-        batch = np.copy(data[indices[data_index:data_index + batch_size]])
-        batch = Variable(torch.from_numpy(batch))
-
-        if model.output_distribution == 'bernoulli':
-            batch = torch.bernoulli(batch / 255.)
-
-        tic = time.time()
-        train_on_batch(model, batch, train_config['n_iterations'], optimizers)
-        toc = time.time()
-        ave_time.append(toc - tic)
-
-    plt.plot(ave_time)
-    plt.show()
-    print ave_time
-
-    #print avg_elbo, avg_cond_log_like, avg_kl
-    #return avg_elbo, avg_cond_log_like, avg_kl
-
-"""
 @plot_train
 def train(model, train_config, data, optimizers, shuffle_data=True):
 
@@ -226,10 +207,6 @@ def train(model, train_config, data, optimizers, shuffle_data=True):
     avg_cond_log_like /= n_batch
     for i in range(len(avg_kl)):
         avg_kl[i] /= n_batch
-
-    #plt.plot(ave_time)
-    #plt.show()
-    #print ave_time
 
     print avg_elbo, avg_cond_log_like, avg_kl
     return avg_elbo, avg_cond_log_like, avg_kl

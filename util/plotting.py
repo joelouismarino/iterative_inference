@@ -32,8 +32,6 @@ def initialize_plots(train_config, arch):
     for level in range(len(arch['n_latent'])):
         kl_legend.append('Level ' + str(level))
 
-    kl_nans = None
-    indices = None
     if len(arch['n_latent']) > 1:
         kl_nans = np.zeros((1, len(arch['n_latent'])))
         kl_nans.fill(np.nan)
@@ -65,6 +63,14 @@ def plot_images(imgs, caption=''):
         imgs = imgs.transpose((0, 3, 1, 2))
     opts = dict(caption=caption)
     win = vis.images(imgs, opts=opts)
+    return win
+
+
+def plot_video(video, fps=1):
+    """Wraps visdom's video function."""
+    global vis
+    opts = dict(fps=int(fps))
+    win = vis.video(video, opts=opts)
     return win
 
 
@@ -102,15 +108,31 @@ def plot_model_vis(func):
     """Wrapper around run function to plot the outputs in corresponding visdom windows."""
     def plotting_func(model, train_config, data, epoch, handle_dict, vis=True):
         output = func(model, train_config, data, vis=vis)
-        avg_elbo, avg_cond_log_like, avg_kl, reconstructions, samples = output
-        #update_trace(np.array([-avg_elbo]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name='Validation')
-        #update_trace(np.array([-avg_cond_log_like]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Validation')
-        #update_trace(np.array([avg_kl]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Validation')
+        total_elbo, total_cond_log_like, total_kl, reconstructions, samples = output
+
+        # plot average metrics on validation set
+        update_trace(np.array([-np.mean(total_elbo[:, -1], axis=0)]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name='Validation')
+        update_trace(np.array([-np.mean(total_cond_log_like[:, -1], axis=0)]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Validation')
+        for level in range(len(model.levels)):
+            update_trace(np.array([np.mean(total_kl[level][:, -1], axis=0)]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Validation, Level ' + str(level))
+
+        # plot average improvement on metrics over iterations
+        elbo_improvement = 100. * np.mean(np.divide(total_elbo[:, 1] - total_elbo[:, -1], total_elbo[:, 1]), axis=0)
+        update_trace(np.array([elbo_improvement]), np.array([epoch]).astype(int), win=handle_dict['elbo_improvement'], name='ELBO')
+
+        cond_log_like_improvement = 100. * np.mean(np.divide(total_cond_log_like[:, 1] - total_cond_log_like[:, -1], total_cond_log_like[:, 1]), axis=0)
+        update_trace(np.array([cond_log_like_improvement]), np.array([epoch]).astype(int), win=handle_dict['recon_improvement'], name='log P(x | z)')
+
+        for level in range(len(model.levels)):
+            kl_improvement = 100. * np.mean(np.divide(total_kl[level][:, 1] - total_kl[level][:, -1], total_kl[level][:, 1]), axis=0)
+            update_trace(np.array([kl_improvement]), np.array([epoch]).astype(int), win=handle_dict['kl_improvement'], name='Level ' + str(level))
+
         if vis:
+            # plot reconstructions, samples
             data_shape = data.shape[1:]
-            print reconstructions.shape
-            plot_images(reconstructions[:, 1].reshape([train_config['batch_size']]+list(data_shape)))
-            plot_images(samples.reshape([train_config['batch_size']]+list(data_shape)))
+            plot_images(reconstructions[:, 1].reshape([train_config['batch_size']]+list(data_shape)), caption='Reconstructions, Epoch ' + str(epoch))
+            plot_images(samples.reshape([train_config['batch_size']]+list(data_shape)), caption='Samples, Epoch ' + str(epoch))
+
         return output, handle_dict
     return plotting_func
 
