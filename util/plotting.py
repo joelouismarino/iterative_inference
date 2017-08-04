@@ -1,6 +1,7 @@
 import visdom
 import numpy as np
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 
 global vis
 
@@ -135,8 +136,19 @@ def plot_pca(data, labels=None, n_dims=3, title='', legend=None):
     data = data.reshape((-1, np.prod(data.shape[1:])))
     pca = PCA(n_components=n_dims).fit(data)
     pca_data = pca.transform(data)
-    print pca_data.shape
     plot_scatter(pca_data, labels, legend=legend, title=title)
+
+
+def plot_tsne(data, labels=None, n_dims=3, title='', legend=None):
+    """T-SNE visualization of high-dimensional state data."""
+    assert n_dims in [2, 3], 'n_dims must be 2 or 3'
+    data = data.reshape((-1, np.prod(data.shape[1:])))
+    if data.shape[1] > 100:
+        pca = PCA(n_components=100).fit(data)
+        data = pca.transform(data)
+    tsne = TSNE(n_components=n_dims)
+    tsne_data = tsne.fit_transform(data)
+    plot_scatter(tsne_data, labels, legend=legend, title=title)
 
 
 def plot_train(func):
@@ -184,7 +196,7 @@ def plot_model_vis(func):
             plot_images(samples.reshape([batch_size]+data_shape), caption='Samples, Epoch ' + str(epoch))
 
             for level in range(len(model.levels)):
-                plot_pca(total_posterior[level][:, 1, 0], 1 + total_labels, title='PCA Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level))
+                plot_tsne(total_posterior[level][:, 1, 0], 1 + total_labels, title='T-SNE Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level))
 
         return output, handle_dict
     return plotting_func

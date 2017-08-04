@@ -16,8 +16,6 @@ def train_on_batch(model, batch, n_iterations, optimizers):
     model.reset()
     model.decode()
 
-    #ave_grad_time = 0.
-
     # inference iterations
     for _ in range(n_iterations - 1):
         model.encode(batch)
@@ -31,9 +29,7 @@ def train_on_batch(model, batch, n_iterations, optimizers):
     model.decode()
 
     elbo, cond_log_like, kl = model.losses(batch, averaged=True)
-    #start = time.time()
     (-elbo).backward()
-    #ave_grad_time = time.time() - start
 
     enc_opt.step()
     dec_opt.step()
@@ -42,8 +38,6 @@ def train_on_batch(model, batch, n_iterations, optimizers):
     cond_log_like = cond_log_like.data.cpu().numpy()[0]
     for level in range(len(kl)):
         kl[level] = kl[level].data.cpu().numpy()[0]
-
-    #print ave_grad_time
 
     return elbo, cond_log_like, kl
 

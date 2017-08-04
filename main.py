@@ -7,12 +7,12 @@ from util.plotting import init_plot, save_env
 from util.logs import init_log
 import time
 
-# todo: set up logging
+# todo: model checkpoints
 # todo: better visualization
 # todo: better data preprocessing (normalization, etc.)
 # todo: add support for online learning
 
-log_root = '/home/joe/Research/iterative_inference_logs'
+log_root = '/home/joe/Research/iterative_inference_logs/'
 log_path, log_dir = init_log(log_root)
 
 global vis
