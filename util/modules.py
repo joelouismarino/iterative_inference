@@ -1,15 +1,29 @@
 import torch
 import torch.nn as nn
+from torch.nn import init
 from torch.autograd import Variable
 
 from distributions import DiagonalGaussian
+
+
+class SELU(nn.Module):
+
+    def __init__(self):
+        super(SELU, self).__init__()
+
+        self.scale = 1.0507009873554804934193349852946
+        self.alpha = 1.6732632423543772848170429916717
+        self.selu = nn.ELU(alpha=self.alpha)
+
+    def forward(self, input):
+        return self.scale * self.selu(input)
 
 
 class Dense(nn.Module):
 
     """Fully-connected (dense) layer with optional batch normalization, non-linearity, weight normalization, and dropout."""
 
-    def __init__(self, n_in, n_out, non_linearity=None, batch_norm=False, weight_norm=False, dropout=0.):
+    def __init__(self, n_in, n_out, non_linearity=None, batch_norm=False, weight_norm=False, dropout=0., initialize='glorot_normal'):
         super(Dense, self).__init__()
 
         self.linear = nn.Linear(n_in, n_out)
@@ -26,7 +40,7 @@ class Dense(nn.Module):
         elif non_linearity == 'elu':
             self.non_linearity = nn.ELU()
         elif non_linearity == 'selu':
-            self.non_linearity = nn.SELU()
+            self.non_linearity = SELU()
         elif non_linearity == 'tanh':
             self.non_linearity = nn.Tanh()
         elif non_linearity == 'sigmoid':
@@ -38,6 +52,29 @@ class Dense(nn.Module):
         if dropout > 0.:
             self.dropout = nn.Dropout(dropout)
 
+        if initialize == 'normal':
+            init.normal(self.linear.weight)
+        elif initialize == 'glorot_uniform':
+            init.xavier_uniform(self.linear.weight)
+        elif initialize == 'glorot_normal':
+            init.xavier_normal(self.linear.weight)
+        elif initialize == 'kaiming_uniform':
+            init.kaiming_uniform(self.linear.weight)
+        elif initialize == 'kaiming_normal':
+            init.kaiming_normal(self.linear.weight)
+        elif initialize == 'orthogonal':
+            init.orthogonal(self.linear.weight)
+        elif initialize == '':
+            pass
+        else:
+            raise Exception('Parameter initialization ' + str(init) + ' not found.')
+
+        if batch_norm:
+            init.constant(self.bn.weight, 1.)
+            init.constant(self.bn.bias, 0.)
+
+        init.constant(self.linear.bias, 0.)
+
     def forward(self, input):
         output = self.linear(input)
         if self.bn:
@@ -47,6 +84,7 @@ class Dense(nn.Module):
         if self.dropout:
             output = self.dropout(output)
         return output
+
 
 class Conv(nn.Module):
 
@@ -90,6 +128,7 @@ class Conv(nn.Module):
             output = self.dropout(output)
         return output
 
+
 class MultiLayerPerceptron(nn.Module):
 
     """Multi-layered perceptron."""
@@ -107,6 +146,8 @@ class MultiLayerPerceptron(nn.Module):
         if self.connection_type in ['residual', 'highway']:
             self.initial_dense = Dense(n_in, n_units, batch_norm=batch_norm, weight_norm=weight_norm)
 
+        output_size = 0
+
         for _ in range(n_layers):
             layer = Dense(n_in, n_units, non_linearity=non_linearity, batch_norm=batch_norm, weight_norm=weight_norm, dropout=dropout)
             self.layers.append(layer)
@@ -114,13 +155,16 @@ class MultiLayerPerceptron(nn.Module):
             if self.connection_type == 'highway':
                 gate = Dense(n_in, n_units, non_linearity='sigmoid', batch_norm=batch_norm, weight_norm=weight_norm)
                 self.gates.append(gate)
-
             if self.connection_type in ['sequential', 'residual', 'highway']:
                 n_in = n_units
             elif self.connection_type == 'concat_input':
                 n_in = n_units + n_in_orig
             elif self.connection_type == 'concat':
                 n_in += n_units
+
+            output_size = n_in
+
+        self.n_out = output_size
 
     def forward(self, input):
 
@@ -129,27 +173,24 @@ class MultiLayerPerceptron(nn.Module):
         for layer_num, layer in enumerate(self.layers):
             if self.connection_type == 'sequential':
                 input = layer(input)
-
             elif self.connection_type == 'residual':
                 if layer_num == 0:
                     input = self.initial_dense(input) + layer(input)
                 else:
                     input += layer(input)
-
             elif self.connection_type == 'highway':
                 gate = self.gates[layer_num]
                 if layer_num == 0:
                     input = gate * self.initial_dense(input) + (1 - gate) * layer(input)
                 else:
                     input = gate * input + (1 - gate) * layer(input)
-
             elif self.connection_type == 'concat_input':
                 input = torch.cat((input_orig, layer(input)), dim=1)
-
             elif self.connection_type == 'concat':
                 input = torch.cat((input, layer(input)), dim=1)
 
         return input
+
 
 class MultiLayerConvolutional(nn.Module):
 
@@ -211,6 +252,7 @@ class MultiLayerConvolutional(nn.Module):
 
         return input
 
+
 class GaussianVariable(object):
 
     def __init__(self, batch_size, n_variables, constant_prior_variances, n_input, update_form):
@@ -256,7 +298,7 @@ class GaussianVariable(object):
         self.prior.mean = self.prior_mean(input)
         if self.prior_log_var is not None:
             self.prior.log_var = self.prior_log_var(input)
-        sample = self.prior.sample() if generate else self.posterior.sample()
+        sample = self.prior.sample(resample=True) if generate else self.posterior.sample()
         return sample
 
     def error(self):
@@ -417,6 +459,7 @@ class ConvGaussianVariable(object):
 
 """
 
+
 class LatentLevel(object):
 
     def __init__(self, batch_size, encoder_arch, decoder_arch, n_latent, n_det, encoding_form, constant_prior_variances,
@@ -428,6 +471,7 @@ class LatentLevel(object):
 
         self.encoder = MultiLayerPerceptron(**encoder_arch)
         self.decoder = MultiLayerPerceptron(**decoder_arch)
+
         self.latent = GaussianVariable(self.batch_size, self.n_latent, constant_prior_variances, variable_input_sizes, variable_update_form)
         self.deterministic_encoder = Dense(variable_input_sizes[0], n_det[0]) if n_det[0] > 0 else None
         self.deterministic_decoder = Dense(variable_input_sizes[1], n_det[1]) if n_det[1] > 0 else None

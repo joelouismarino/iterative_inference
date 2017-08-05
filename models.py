@@ -3,12 +3,21 @@ import torch.utils.data
 from torch.autograd import Variable
 import numpy as np
 
+from util.logs import load_model_checkpoint
 from util.distributions import DiagonalGaussian, Bernoulli
 from util.modules import Dense, MultiLayerPerceptron, GaussianVariable, LatentLevel
 
-# todo: allow for saving model
 # todo: add support for multiple samples to encode, decode
 # todo: allow for printing out the model architecture
+# todo: implement cpu() method
+
+
+def get_model(train_config, arch, data_size):
+    if train_config['resume_experiment'] != '' and train_config['resume_experiment'] is not None:
+        return load_model_checkpoint()
+    else:
+        return LatentVariableModel(train_config, arch, data_size)
+
 
 class LatentVariableModel(object):
 
@@ -18,25 +27,32 @@ class LatentVariableModel(object):
         self.constant_variances = arch['constant_prior_variances']
         self.batch_size = train_config['batch_size']
         self.kl_min = train_config['kl_min']
+
         self.top_size = arch['top_size']
         arch['n_units_dec'].append(arch['top_size'])
+        arch['n_layers_dec'].append(0)
+
         self.input_size = np.prod(data_size).astype(int)
+
         assert train_config['output_distribution'] in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
         self.output_distribution = train_config['output_distribution']
-        self.levels = []
+
+        self.levels = [None for _ in range(len(arch['n_latent']))]
         self.construct_model(arch)
+
         self.output_dist = None
         if self.output_distribution == 'bernoulli':
             self.output_dist = Bernoulli(None)
-            self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity='sigmoid', weight_norm=arch['weight_norm_dec'])
+            self.mean_output = Dense(self.levels[0].decoder.n_out, self.input_size, non_linearity='sigmoid', weight_norm=arch['weight_norm_dec'])
         if self.output_distribution == 'gaussian':
             self.output_dist = DiagonalGaussian(None, None)
-            self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, weight_norm=arch['weight_norm_dec'])
+            self.mean_output = Dense(self.levels[0].decoder.n_out, self.input_size, weight_norm=arch['weight_norm_dec'])
             if self.constant_variances:
                 self.trainable_log_var = Variable(torch.zeros(self.input_size), requires_grad=True)
                 self.log_var_output = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
             else:
-                self.log_var_output = Dense(arch['n_units_dec'][0], self.input_size, weight_norm=arch['weight_norm_dec'])
+                self.log_var_output = Dense(self.levels[0].decoder.n_out, self.input_size, weight_norm=arch['weight_norm_dec'])
+
         self._cuda_device = None
         if train_config['cuda_device'] is not None:
             self.cuda(train_config['cuda_device'])
@@ -72,12 +88,36 @@ class LatentVariableModel(object):
 
             n_latent = arch['n_latent'][level]
             n_det = [arch['n_det_enc'][level], arch['n_det_dec'][level]]
-            variable_input_sizes = [arch['n_units_enc'][level], arch['n_units_dec'][level+1]]
+
+            if level == len(arch['n_latent']) - 1:
+                prior_input_size = self.top_size
+            else:
+                prior_input_size = self.get_mlp_output_size(arch['n_latent'][level+1] + arch['n_det_dec'][level+1],
+                                                            arch['n_layers_dec'][level+1], arch['n_units_dec'][level+1],
+                                                            decoder_arch['connection_type'])
+
+            posterior_input_size = self.get_mlp_output_size(encoder_arch['n_in'], encoder_arch['n_layers'],
+                                                            encoder_arch['n_units'], encoder_arch['connection_type'])
+
+            variable_input_sizes = [posterior_input_size, prior_input_size]
 
             latent_level = LatentLevel(self.batch_size, encoder_arch, decoder_arch, n_latent, n_det,
                                        encoding_form, constant_prior_variances, variable_input_sizes, variable_update_form)
 
-            self.levels.append(latent_level)
+            self.levels[level] = latent_level
+
+    def get_mlp_output_size(self, n_in, n_layers, n_units, connection_type):
+
+        if connection_type in ['sequential', 'residual', 'highway']:
+            return n_units
+        elif connection_type == 'concat_input':
+            return n_units + n_in
+        else:
+            output_size = n_in
+            for _ in range(n_layers):
+                output_size += n_units
+            return output_size
+
 
     def get_input_encoding_size(self, level_num, arch):
         if level_num == 0:
@@ -239,5 +279,6 @@ class LatentVariableModel(object):
             else:
                 self.log_var_output.cuda(device_id)
 
-    def save(self):
+    def cpu(self):
+        # place the model on the CPU
         pass

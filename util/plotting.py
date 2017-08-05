@@ -63,7 +63,6 @@ def initialize_plots(train_config, arch):
     return handle_dict
 
 
-
 def save_env():
     """Saves the visdom environment."""
     global vis
@@ -125,7 +124,7 @@ def update_trace(Y, X, win, name):
 def plot_scatter(X, Y=None, legend=None, title='', xlabel='', ylabel='', markersize=5):
     """Wraps visdom's scatter function."""
     global vis
-    opts = dict(title=title, xlabel=xlabel, ylabel=ylabel, markersize=markersize)
+    opts = dict(title=title, xlabel=xlabel, ylabel=ylabel, markersize=markersize, legend=legend)
     win = vis.scatter(X, Y, opts=opts)
     return win
 
@@ -166,7 +165,7 @@ def plot_train(func):
 
 def plot_model_vis(func):
     """Wrapper around run function to plot the outputs in corresponding visdom windows."""
-    def plotting_func(model, train_config, data_loader, epoch, handle_dict, vis=True):
+    def plotting_func(model, train_config, data_loader, epoch, handle_dict, vis=True, label_names=None):
         output = func(model, train_config, data_loader, epoch, vis=vis)
         total_elbo, total_cond_log_like, total_kl, total_labels, total_recon, total_posterior, total_prior, samples = output
 
@@ -196,7 +195,7 @@ def plot_model_vis(func):
             plot_images(samples.reshape([batch_size]+data_shape), caption='Samples, Epoch ' + str(epoch))
 
             for level in range(len(model.levels)):
-                plot_tsne(total_posterior[level][:, 1, 0], 1 + total_labels, title='T-SNE Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level))
+                plot_tsne(total_posterior[level][:, 1, 0], 1 + total_labels, title='T-SNE Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level), legend=label_names)
 
         return output, handle_dict
     return plotting_func

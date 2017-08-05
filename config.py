@@ -3,11 +3,12 @@
 train_config = {
     'dataset': 'binarized_MNIST',
     'output_distribution': 'bernoulli',
-    'batch_size': 256,
+    'batch_size': 64,
     'n_iterations': 1,
-    'learning_rate': 0.002,
+    'learning_rate': 0.0002,
     'kl_min': 0,
-    'cuda_device': 0
+    'cuda_device': 1,
+    'resume_experiment': None
 }
 
 # model architecture
@@ -19,16 +20,16 @@ arch = {
 
     'top_size': 25,
 
-    'n_latent': [100],
+    'n_latent': [64],
 
     'n_det_enc': [0],
     'n_det_dec': [0],
 
-    'n_layers_enc': [3],
-    'n_layers_dec': [3],
+    'n_layers_enc': [2],
+    'n_layers_dec': [2],
 
-    'n_units_enc': [500],
-    'n_units_dec': [500],
+    'n_units_enc': [512],
+    'n_units_dec': [512],
 
     'non_linearity_enc': 'elu',
     'non_linearity_dec': 'elu',

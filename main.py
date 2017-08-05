@@ -1,29 +1,28 @@
 from config import train_config, arch
-from models import LatentVariableModel
+from models import get_model
 from util.data.load_data import load_data
 from util.misc import get_optimizers
 from util.train_val import train, run
 from util.plotting import init_plot, save_env
-from util.logs import init_log
+from util.logs import init_log, save_checkpoint
 import time
 
-# todo: model checkpoints
 # todo: better visualization
 # todo: better data preprocessing (normalization, etc.)
 # todo: add support for online learning
 
 log_root = '/home/joe/Research/iterative_inference_logs/'
-log_path, log_dir = init_log(log_root)
+log_path, log_dir = init_log(log_root, train_config)
 
 global vis
 vis, handle_dict = init_plot(train_config, arch, env=log_dir)
 
 # load data, labels
 data_path = '/home/joe/Datasets'
-train_loader, val_loader = load_data(train_config['dataset'], data_path, train_config['batch_size'], cuda_device=train_config['cuda_device'])
+train_loader, val_loader, label_names = load_data(train_config['dataset'], data_path, train_config['batch_size'], cuda_device=train_config['cuda_device'])
 
 # construct model
-model = LatentVariableModel(train_config, arch, tuple(next(iter(train_loader))[0].size()[1:]))
+model = get_model(train_config, arch, tuple(next(iter(train_loader))[0].size()[1:]))
 
 # get optimizers
 (enc_opt, enc_sched), (dec_opt, dec_sched) = get_optimizers(train_config, model)
@@ -39,6 +38,9 @@ for epoch in range(500):
     visualize = False
     if epoch % 100 == 0:
         visualize = True
-    run(model, train_config, val_loader, epoch+1, handle_dict, vis=visualize)
+    run(model, train_config, val_loader, epoch+1, handle_dict, vis=visualize, label_names=label_names)
     save_env()
     #enc_sched.step(); dec_sched.step()
+    #if epoch % 100 == 0:
+    #    save_checkpoint(model, (enc_opt, dec_opt), epoch)
+

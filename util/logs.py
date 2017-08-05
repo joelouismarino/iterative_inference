@@ -1,21 +1,30 @@
 import os
 import numpy as np
 import cPickle as pickle
+import torch
 from time import gmtime, strftime
 
 global log_path
 
 
-def init_log(log_root):
+def init_log(log_root, train_config):
+    # load/create log directory, format: day_month_year_hour_minutes_seconds
     global log_path
-    # creates log directory, format: day_month_year_hour_minutes_seconds
+
+    if train_config['resume_experiment'] != '' and train_config['resume_experiment'] is not None:
+        if os.path.exists(os.path.join(log_root, train_config['resume_experiment'])):
+            log_path = os.path.join(log_root, train_config['resume_experiment'])
+            return log_path, train_config['resume_experiment']
+        else:
+            raise Exception('Experiment folder ' + train_config['resume_experiment'] + ' not found.')
+
     log_dir = strftime("%d_%b_%Y_%H_%M_%S", gmtime()) + '/'
-    log_path = os.path.join(log_root + log_dir)
+    log_path = os.path.join(log_root, log_dir)
     os.makedirs(log_path)
     os.system("rsync -au --include '*/' --include '*.py' --exclude '*' . " + log_path + "source")
     os.makedirs(os.path.join(log_path, 'metrics'))
     os.makedirs(os.path.join(log_path, 'visualizations'))
-    os.makedirs(os.path.join(log_path, 'model_checkpoints'))
+    os.makedirs(os.path.join(log_path, 'checkpoints'))
     return log_path, log_dir
 
 
@@ -78,3 +87,34 @@ def log_vis(func):
         return output
 
     return log_func
+
+
+def save_checkpoint(model, opt, epoch):
+    global log_path
+    torch.save(model, os.path.join(log_path, 'checkpoints', 'epoch_'+str(epoch)+'_model.ckpt'))
+    torch.save(tuple(opt), os.path.join(log_path, 'checkpoints', 'epoch_'+str(epoch)+'_opt.ckpt'))
+
+
+def get_last_epoch():
+    global log_path
+    last_epoch = 0
+    for r, d, f in os.walk(os.path.join(log_path, 'checkpoints')):
+        for ckpt_file_name in f:
+            if ckpt_file_name[0] == 'e':
+                epoch = int(ckpt_file_name.split('_')[1])
+                if epoch > last_epoch:
+                    last_epoch = epoch
+    return last_epoch
+
+
+def load_opt_checkpoint(epoch=-1):
+    if epoch == -1:
+        epoch = get_last_epoch()
+    return torch.load(os.path.join(log_path, 'checkpoints', 'epoch_'+str(epoch)+'_opt.ckpt'))
+
+
+def load_model_checkpoint(epoch=-1):
+    if epoch == -1:
+        epoch = get_last_epoch()
+    return torch.load(os.path.join(log_path, 'checkpoints', 'epoch_'+str(epoch)+'_model.ckpt'))
+

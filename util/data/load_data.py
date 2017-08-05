@@ -9,9 +9,9 @@ from scipy.io import loadmat
 
 from load_torch_data import load_torch_data
 
-# todo: add labels to remaining datasets
 # todo: add file iterators for ImageNet
-# todo: add label names
+# todo: add label names to omniglot, imagenet
+# todo: add labels to static binarized MNIST, imagenet, omniglot
 
 
 @load_torch_data
@@ -22,8 +22,8 @@ def load_data(dataset, data_path):
     assert os.path.exists(data_path), 'Data path not found. Please specify a valid path.'
 
     print 'Loading data...'
-    train = val = None
     train_labels = val_labels = None
+    label_names = None
 
     def unpickle(file_name):
         import cPickle
@@ -90,6 +90,8 @@ def load_data(dataset, data_path):
             os.remove(os.path.join(data_path, 'MNIST', 't10k-labels-idx1-ubyte.gz'))
         val_labels = load_mnist_labels_np(os.path.join(data_path, 'MNIST', 't10k-labels-idx1-ubyte'))
 
+        label_names = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+
     elif dataset == 'static_binarized_MNIST':
         if not os.path.exists(os.path.join(data_path, 'static_binarized_MNIST')):
             os.makedirs(os.path.join(data_path, 'static_binarized_MNIST'))
@@ -120,6 +122,8 @@ def load_data(dataset, data_path):
             lines = f.readlines()
         val = np.array([[int(i) for i in line.split()] for line in lines]).astype('float32').reshape((-1, 28, 28))
 
+        label_names = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+
     elif dataset == 'omniglot':
         if not os.path.exists(os.path.join(data_path, 'omniglot')):
             os.makedirs(os.path.join(data_path, 'omniglot'))
@@ -139,7 +143,11 @@ def load_data(dataset, data_path):
             urllib.urlretrieve('https://people.cs.umass.edu/~marlin/data/caltech101_silhouettes_28_split1.mat', os.path.join(data_path, 'caltech_101_silhouettes', 'caltech101_silhouettes_28_split1.mat'))
         data = loadmat(os.path.join(data_path, 'caltech_101_silhouettes', 'caltech101_silhouettes_28_split1.mat'))
         train = np.concatenate([data['train_data'], data['val_data']], axis=0).astype('float32').reshape((-1, 28, 28))
+        train_labels = np.concatenate([data['train_labels'], data['val_labels']], axis=0).astype('float32').reshape(-1)
         val = data['test_data'].astype('float32').reshape((-1, 28, 28))
+        val_labels = data['test_labels'].astype('float32').reshape(-1)
+        label_names = data['classnames'].reshape(-1)
+        label_names = [str(label_names[i][0]) for i in range(label_names.shape[0])]
 
     elif dataset == 'CIFAR_10':
         if not os.path.exists(os.path.join(data_path, 'CIFAR_10')):
@@ -157,6 +165,8 @@ def load_data(dataset, data_path):
         _val = unpickle(os.path.join(data_path, 'CIFAR_10', 'cifar-10-batches-py', 'test_batch'))
         val = _val['data'].astype('float32').reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2)
         val_labels = np.array(_val['labels'])
+        label_dict = unpickle(os.path.join(data_path, 'CIFAR_10', 'batches.meta'))
+        label_names = label_dict['label_names']
 
     elif dataset == 'CIFAR_100':
         if not os.path.exists(os.path.join(data_path, 'CIFAR_100')):
@@ -170,10 +180,12 @@ def load_data(dataset, data_path):
             tar.close()
         _train = unpickle(os.path.join(data_path, 'CIFAR_100', 'cifar-100-python', 'train'))
         train = _train['data'].astype('float32').reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2)
-        train_labels = np.array(_train['coarse_labels'])
+        train_labels = np.array(_train['fine_labels'])
         _val = unpickle(os.path.join(data_path, 'CIFAR_100', 'cifar-100-python', 'test'))
         val = _val['data'].astype('float32').reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2)
-        val_labels = np.array(_val['coarse_labels'])
+        val_labels = np.array(_val['fine_labels'])
+        label_dict = unpickle(os.path.join(data_path, 'CIFAR_100', 'meta'))
+        label_names = label_dict['fine_label_names']
 
     elif dataset == 'SVHN':
         if not os.path.exists(os.path.join(data_path, 'SVHN')):
@@ -181,11 +193,17 @@ def load_data(dataset, data_path):
         if not os.path.exists(os.path.join(data_path, 'SVHN','train_32x32.mat')):
             print 'Downloading SVHN train...'
             urllib.urlretrieve('http://ufldl.stanford.edu/housenumbers/train_32x32.mat', os.path.join(data_path, 'SVHN', 'train_32x32.mat'))
-        train = loadmat(os.path.join(data_path, 'SVHN', 'train_32x32.mat'))['X'].swapaxes(2, 3).swapaxes(1, 2).swapaxes(0, 1).astype('float32')
+        data_labels = loadmat(os.path.join(data_path, 'SVHN', 'train_32x32.mat'))
+        train = data_labels['X'].swapaxes(2, 3).swapaxes(1, 2).swapaxes(0, 1).astype('float32')
+        train_labels = data_labels['y'].reshape(-1).astype('float32')
         if not os.path.exists(os.path.join(data_path, 'SVHN', 'test_32x32.mat')):
             print 'Downloading SVHN test...'
             urllib.urlretrieve('http://ufldl.stanford.edu/housenumbers/test_32x32.mat', os.path.join(data_path, 'SVHN', 'test_32x32.mat'))
-        val = loadmat(os.path.join(data_path, 'SVHN', 'test_32x32.mat'))['X'].swapaxes(2, 3).swapaxes(1, 2).swapaxes(0, 1).astype('float32')
+        data_labels = loadmat(os.path.join(data_path, 'SVHN', 'test_32x32.mat'))
+        val = data_labels['X'].swapaxes(2, 3).swapaxes(1, 2).swapaxes(0, 1).astype('float32')
+        val_labels = data_labels['y'].reshape(-1).astype('float32')
+
+        label_names = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 
     elif dataset == 'imagenet_32':
         if not os.path.exists(os.path.join(data_path, 'imagenet_32')):
@@ -237,4 +255,4 @@ def load_data(dataset, data_path):
         raise Exception('Dataset ' + str(dataset) + ' not found.')
 
     print 'Data loaded.'
-    return (train, val), (train_labels, val_labels)
+    return (train, val), (train_labels, val_labels), label_names
