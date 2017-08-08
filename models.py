@@ -28,6 +28,8 @@ class LatentVariableModel(object):
         self.batch_size = train_config['batch_size']
         self.kl_min = train_config['kl_min']
 
+        self.concat_variables = arch['concat_variables']
+
         self.top_size = arch['top_size']
         arch['n_units_dec'].append(arch['top_size'])
         arch['n_layers_dec'].append(0)
@@ -62,27 +64,36 @@ class LatentVariableModel(object):
 
         encoding_form = arch['encoding_form']
         variable_update_form = arch['variable_update_form']
-        constant_prior_variances = arch['constant_prior_variances']
+        const_prior_var = arch['constant_prior_variances']
+        learn_top_prior = arch['learn_top_prior']
 
         encoder_arch = {}
         encoder_arch['non_linearity'] = arch['non_linearity_enc']
         encoder_arch['connection_type'] = arch['connection_type_enc']
         encoder_arch['batch_norm'] = arch['batch_norm_enc']
         encoder_arch['weight_norm'] = arch['weight_norm_enc']
+        encoder_arch['dropout'] = arch['dropout_enc']
 
         decoder_arch = {}
         decoder_arch['non_linearity'] = arch['non_linearity_dec']
         decoder_arch['connection_type'] = arch['connection_type_dec']
         decoder_arch['batch_norm'] = arch['batch_norm_dec']
         decoder_arch['weight_norm'] = arch['weight_norm_dec']
+        encoder_arch['dropout'] = arch['dropout_dec']
 
         for level in range(len(arch['n_latent'])):
 
             encoder_arch['n_in'] = self.get_input_encoding_size(level, arch)
+            if arch['concat_variables']:
+                for lower_level in range(level):
+                    encoder_arch['n_in'] += get_input_encoding_size(lower_level, arch)
             encoder_arch['n_units'] = arch['n_units_enc'][level]
             encoder_arch['n_layers'] = arch['n_layers_enc'][level]
 
             decoder_arch['n_in'] = arch['n_latent'][level] + arch['n_det_dec'][level]
+            if arch['concat_variables']:
+                for higher_level in range(level+1, len(arch['n_latent'])):
+                    decoder_arch['n_in'] += arch['n_latent'][higher_level]
             decoder_arch['n_units'] = arch['n_units_dec'][level]
             decoder_arch['n_layers'] = arch['n_layers_dec'][level]
 
@@ -101,8 +112,12 @@ class LatentVariableModel(object):
 
             variable_input_sizes = [posterior_input_size, prior_input_size]
 
+            learn_prior = True
+            if level == len(arch['n_latent'])-1:
+                learn_prior = learn_top_prior
+
             latent_level = LatentLevel(self.batch_size, encoder_arch, decoder_arch, n_latent, n_det,
-                                       encoding_form, constant_prior_variances, variable_input_sizes, variable_update_form)
+                                       encoding_form, const_prior_var, variable_input_sizes, variable_update_form, learn_prior)
 
             self.levels[level] = latent_level
 
@@ -117,7 +132,6 @@ class LatentVariableModel(object):
             for _ in range(n_layers):
                 output_size += n_units
             return output_size
-
 
     def get_input_encoding_size(self, level_num, arch):
         if level_num == 0:
@@ -165,15 +179,21 @@ class LatentVariableModel(object):
             input = input.cuda(self._cuda_device)
         h = self.get_input_encoding(input.view(-1, self.input_size))
         for latent_level in self.levels:
-            h = latent_level.encode(h)
+            if self.concat_variables:
+                h = torch.cat([h, latent_level.encode(h)], dim=1)
+            else:
+                h = latent_level.encode(h)
 
     def decode(self, generate=False):
         # decode the posterior or prior estimate
         h = Variable(torch.zeros(self.batch_size, self.top_size))
         if self._cuda_device is not None:
             h = h.cuda(self._cuda_device)
-        for latent_level in self.levels:
-            h = latent_level.decode(h, generate)
+        for latent_level in self.levels[::-1]:
+            if self.concat_variables:
+                h = torch.cat([h, latent_level.decode(h, generate)], dim=1)
+            else:
+                h = latent_level.decode(h, generate)
 
         output_mean = self.mean_output(h)
         self.output_dist.mean = output_mean
@@ -265,6 +285,26 @@ class LatentVariableModel(object):
         for latent_level in self.levels:
             states.extend(list(latent_level.state_parameters()))
         return states
+
+    def eval(self):
+        for latent_level in self.levels:
+            latent_level.eval()
+        self.mean_output.eval()
+        if self.output_distribution == 'gaussian':
+            if self.constant_variances:
+                self.trainable_log_var.eval()
+            else:
+                self.log_var_output.eval()
+
+    def train(self):
+        for latent_level in self.levels:
+            latent_level.train()
+        self.mean_output.train()
+        if self.output_distribution == 'gaussian':
+            if self.constant_variances:
+                self.trainable_log_var.train()
+            else:
+                self.log_var_output.train()
 
     def cuda(self, device_id=0):
         # place the model on the GPU

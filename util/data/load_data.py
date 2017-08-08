@@ -9,7 +9,6 @@ from scipy.io import loadmat
 
 from load_torch_data import load_torch_data
 
-# todo: add file iterators for ImageNet
 # todo: add label names to omniglot, imagenet
 # todo: add labels to static binarized MNIST, imagenet, omniglot
 
@@ -22,6 +21,7 @@ def load_data(dataset, data_path):
     assert os.path.exists(data_path), 'Data path not found. Please specify a valid path.'
 
     print 'Loading data...'
+    train = val = None
     train_labels = val_labels = None
     label_names = None
 
@@ -216,7 +216,6 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'imagenet_32'))
             tar.close()
             os.remove(os.path.join(data_path, 'imagenet_32', 'train_32x32.tar'))
-        train = data_generator(os.path.join(data_path, 'imagenet_32', 'train_32x32'))
 
         if not os.path.exists(os.path.join(data_path, 'imagenet_32', 'valid_32x32')):
             print 'Downloading ImageNet 32 x 32 validation data...'
@@ -226,7 +225,6 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'imagenet_32'))
             tar.close()
             os.remove(os.path.join(data_path, 'imagenet_32', 'valid_32x32.tar'))
-        val = data_generator(os.path.join(data_path, 'imagenet_32', 'valid_32x32'))
 
     elif dataset == 'imagenet_64':
         if not os.path.exists(os.path.join(data_path, 'imagenet_64')):
@@ -239,7 +237,6 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'imagenet_64'))
             tar.close()
             os.remove(os.path.join(data_path, 'imagenet_64', 'train_64x64.tar'))
-        train = data_generator(os.path.join(data_path, 'imagenet_64', 'train_64x64'))
 
         if not os.path.exists(os.path.join(data_path, 'imagenet_64', 'valid_64x64')):
             print 'Downloading ImageNet 64 x 64 validation data...'
@@ -249,7 +246,6 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'imagenet_64'))
             tar.close()
             os.remove(os.path.join(data_path, 'imagenet_64', 'valid_64x64.tar'))
-        val = data_generator(os.path.join(data_path, 'imagenet_64', 'valid_64x64'))
 
     else:
         raise Exception('Dataset ' + str(dataset) + ' not found.')

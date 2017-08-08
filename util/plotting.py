@@ -170,10 +170,15 @@ def plot_model_vis(func):
         total_elbo, total_cond_log_like, total_kl, total_labels, total_recon, total_posterior, total_prior, samples = output
 
         # plot average metrics on validation set
-        update_trace(np.array([-np.mean(total_elbo[:, -1], axis=0)]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name='Validation')
-        update_trace(np.array([-np.mean(total_cond_log_like[:, -1], axis=0)]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Validation')
+        average_elbo = np.mean(total_elbo[:, -1], axis=0)
+        update_trace(np.array([-average_elbo]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name='Validation')
+        average_cond_log_like = np.mean(total_cond_log_like[:, -1], axis=0)
+        update_trace(np.array([-average_cond_log_like]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Validation')
+        average_kl = [0. for _ in range(len(model.levels))]
         for level in range(len(model.levels)):
-            update_trace(np.array([np.mean(total_kl[level][:, -1], axis=0)]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Validation, Level ' + str(level))
+            average_kl[level] = np.mean(total_kl[level][:, -1], axis=0)
+            update_trace(np.array([average_kl[level]]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Validation, Level ' + str(level))
+        averages = average_elbo, average_cond_log_like, average_kl
 
         if train_config['n_iterations'] > 1:
             # plot average improvement on metrics over iterations
@@ -197,6 +202,6 @@ def plot_model_vis(func):
             for level in range(len(model.levels)):
                 plot_tsne(total_posterior[level][:, 1, 0], 1 + total_labels, title='T-SNE Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level), legend=label_names)
 
-        return output, handle_dict
+        return output, averages, handle_dict
     return plotting_func
 

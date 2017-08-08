@@ -8,11 +8,15 @@ from util.logs import init_log, save_checkpoint
 import time
 
 # todo: better visualization
+#           - visualize errors at input level
+#           - plot learning rate over epochs
+#           - latent traversal of lowest variance dimensions
 # todo: better data preprocessing (normalization, etc.)
 # todo: add support for online learning
 
 log_root = '/home/joe/Research/iterative_inference_logs/'
 log_path, log_dir = init_log(log_root, train_config)
+print 'Experiment: ' + log_dir
 
 global vis
 vis, handle_dict = init_plot(train_config, arch, env=log_dir)
@@ -31,6 +35,7 @@ for epoch in range(500):
     print 'Epoch: ' + str(epoch+1)
     # train
     tic = time.time()
+    model.train()
     train(model, train_config, train_loader, epoch+1, handle_dict, (enc_opt, dec_opt))
     toc = time.time()
     print 'Time: ' + str(toc - tic)
@@ -38,9 +43,10 @@ for epoch in range(500):
     visualize = False
     if epoch % 100 == 0:
         visualize = True
-    run(model, train_config, val_loader, epoch+1, handle_dict, vis=visualize, label_names=label_names)
+    model.eval()
+    _, averages, _ = run(model, train_config, val_loader, epoch+1, handle_dict, vis=visualize, label_names=label_names)
     save_env()
-    #enc_sched.step(); dec_sched.step()
+    #enc_sched.step(-averages[0])
+    #dec_sched.step(-averages[0])
     #if epoch % 100 == 0:
     #    save_checkpoint(model, (enc_opt, dec_opt), epoch)
-

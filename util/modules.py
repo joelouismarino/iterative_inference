@@ -5,31 +5,21 @@ from torch.autograd import Variable
 
 from distributions import DiagonalGaussian
 
-
-class SELU(nn.Module):
-
-    def __init__(self):
-        super(SELU, self).__init__()
-
-        self.scale = 1.0507009873554804934193349852946
-        self.alpha = 1.6732632423543772848170429916717
-        self.selu = nn.ELU(alpha=self.alpha)
-
-    def forward(self, input):
-        return self.scale * self.selu(input)
+# todo: add inverse auto-regressive flow to GaussianVariable
+# todo: get conv modules working
 
 
 class Dense(nn.Module):
 
     """Fully-connected (dense) layer with optional batch normalization, non-linearity, weight normalization, and dropout."""
 
-    def __init__(self, n_in, n_out, non_linearity=None, batch_norm=False, weight_norm=False, dropout=0., initialize='glorot_normal'):
+    def __init__(self, n_in, n_out, non_linearity=None, batch_norm=False, weight_norm=False, dropout=0., initialize='glorot_uniform'):
         super(Dense, self).__init__()
 
         self.linear = nn.Linear(n_in, n_out)
         self.bn = None
         if batch_norm:
-            self.bn = nn.BatchNorm1d(n_out)
+            self.bn = nn.BatchNorm1d(n_out, momentum=0.99)
         if weight_norm:
             self.linear = nn.utils.weight_norm(self.linear, name='weight')
 
@@ -40,7 +30,7 @@ class Dense(nn.Module):
         elif non_linearity == 'elu':
             self.non_linearity = nn.ELU()
         elif non_linearity == 'selu':
-            self.non_linearity = SELU()
+            self.non_linearity = nn.SELU()
         elif non_linearity == 'tanh':
             self.non_linearity = nn.Tanh()
         elif non_linearity == 'sigmoid':
@@ -67,10 +57,10 @@ class Dense(nn.Module):
         elif initialize == '':
             pass
         else:
-            raise Exception('Parameter initialization ' + str(init) + ' not found.')
+            raise Exception('Parameter initialization ' + str(initialize) + ' not found.')
 
         if batch_norm:
-            init.constant(self.bn.weight, 1.)
+            init.normal(self.bn.weight, 1, 0.02)
             init.constant(self.bn.bias, 0.)
 
         init.constant(self.linear.bias, 0.)
@@ -90,7 +80,7 @@ class Conv(nn.Module):
 
     """Basic convolutional layer with optional batch normalization, non-linearity, weight normalization and dropout."""
 
-    def __init__(self, n_in, filter_size, n_out, non_linearity=None, batch_norm=False, weight_norm=False, dropout=0.):
+    def __init__(self, n_in, filter_size, n_out, non_linearity=None, batch_norm=False, weight_norm=False, dropout=0., initialize='glorot_uniform'):
         super(Conv, self).__init__()
 
         self.conv = nn.Conv2d(n_in, n_out, filter_size, padding=int(np.ceil(filter_size/2)))
@@ -98,7 +88,7 @@ class Conv(nn.Module):
         if batch_norm:
             self.bn = nn.BatchNorm2d(n_out)
         if weight_norm:
-            self.linear = nn.utils.weight_norm(self.linear, name='weight')
+            self.conv = nn.utils.weight_norm(self.conv, name='weight')
 
         if non_linearity is None:
             self.non_linearity = None
@@ -117,6 +107,29 @@ class Conv(nn.Module):
 
         if dropout > 0.:
             self.dropout = nn.Dropout2d(dropout)
+
+        if initialize == 'normal':
+            init.normal(self.conv.weight)
+        elif initialize == 'glorot_uniform':
+            init.xavier_uniform(self.conv.weight)
+        elif initialize == 'glorot_normal':
+            init.xavier_normal(self.conv.weight)
+        elif initialize == 'kaiming_uniform':
+            init.kaiming_uniform(self.conv.weight)
+        elif initialize == 'kaiming_normal':
+            init.kaiming_normal(self.conv.weight)
+        elif initialize == 'orthogonal':
+            init.orthogonal(self.conv.weight)
+        elif initialize == '':
+            pass
+        else:
+            raise Exception('Parameter initialization ' + str(initialize) + ' not found.')
+
+        if batch_norm:
+            init.constant(self.bn.weight, 1.)
+            init.constant(self.bn.bias, 0.)
+
+        init.constant(self.conv.bias, 0.)
 
     def forward(self, input):
         output = self.conv(input)
@@ -181,9 +194,9 @@ class MultiLayerPerceptron(nn.Module):
             elif self.connection_type == 'highway':
                 gate = self.gates[layer_num]
                 if layer_num == 0:
-                    input = gate * self.initial_dense(input) + (1 - gate) * layer(input)
+                    input = gate(input) * self.initial_dense(input) + (1 - gate(input)) * layer(input)
                 else:
-                    input = gate * input + (1 - gate) * layer(input)
+                    input = gate(input) * input + (1 - gate(input)) * layer(input)
             elif self.connection_type == 'concat_input':
                 input = torch.cat((input_orig, layer(input)), dim=1)
             elif self.connection_type == 'concat':
@@ -192,12 +205,12 @@ class MultiLayerPerceptron(nn.Module):
         return input
 
 
-class MultiLayerConvolutional(nn.Module):
+class MultiLayerConv(nn.Module):
 
     """Multi-layer convolutional network."""
 
     def __init__(self, n_in, n_filters, filter_size, n_layers, non_linearity=None, connection_type='sequential', batch_norm=False, weight_norm=False, dropout=0.):
-        super(MultiLayerConvolutional, self).__init__()
+        super(MultiLayerConv, self).__init__()
         assert connection_type in ['sequential', 'residual', 'highway', 'concat_input', 'concat'], 'Connection type not found.'
         self.connection_type = connection_type
         self.layers = nn.ModuleList([])
@@ -255,17 +268,19 @@ class MultiLayerConvolutional(nn.Module):
 
 class GaussianVariable(object):
 
-    def __init__(self, batch_size, n_variables, constant_prior_variances, n_input, update_form):
+    def __init__(self, batch_size, n_variables, const_prior_var, n_input, update_form, learn_prior=True):
 
         self.batch_size = batch_size
         self.n_variables = n_variables
-        assert update_form in ['direct', 'highway'], 'Variable update type not found.'
+        assert update_form in ['direct', 'highway'], 'Latent variable update form not found.'
         self.update_form = update_form
+        self.learn_prior = learn_prior
 
-        self.prior_mean = Dense(n_input[1], self.n_variables)
-        self.prior_log_var = None
-        if not constant_prior_variances:
-            self.prior_log_var = Dense(n_input[1], self.n_variables)
+        if self.learn_prior:
+            self.prior_mean = Dense(n_input[1], self.n_variables)
+            self.prior_log_var = None
+            if not const_prior_var:
+                self.prior_log_var = Dense(n_input[1], self.n_variables)
         self.posterior_mean = Dense(n_input[0], self.n_variables)
         self.posterior_log_var = Dense(n_input[0], self.n_variables)
 
@@ -275,7 +290,7 @@ class GaussianVariable(object):
 
         self.posterior = self.init_dist()
         self.prior = self.init_dist()
-        if constant_prior_variances:
+        if self.learn_prior and const_prior_var:
             self.prior.log_var_trainable()
 
     def init_dist(self):
@@ -295,9 +310,10 @@ class GaussianVariable(object):
 
     def decode(self, input, generate=False):
         # decode the mean and log variance, update, return sample
-        self.prior.mean = self.prior_mean(input)
-        if self.prior_log_var is not None:
-            self.prior.log_var = self.prior_log_var(input)
+        if self.learn_prior:
+            self.prior.mean = self.prior_mean(input)
+            if self.prior_log_var is not None:
+                self.prior.log_var = self.prior_log_var(input)
         sample = self.prior.sample(resample=True) if generate else self.posterior.sample()
         return sample
 
@@ -326,11 +342,34 @@ class GaussianVariable(object):
     def trainable_log_var(self):
         self.posterior.log_var_trainable()
 
+    def eval(self):
+        if self.learn_prior:
+            self.prior_mean.eval()
+            if self.prior_log_var is not None:
+                self.prior_log_var.eval()
+        self.posterior_mean.eval()
+        self.posterior_log_var.eval()
+        if self.update_form == 'highway':
+            self.posterior_mean_gate.eval()
+            self.posterior_log_var_gate.eval()
+
+    def train(self):
+        if self.learn_prior:
+            self.prior_mean.train()
+            if self.prior_log_var is not None:
+                self.prior_log_var.train()
+        self.posterior_mean.train()
+        self.posterior_log_var.train()
+        if self.update_form == 'highway':
+            self.posterior_mean_gate.train()
+            self.posterior_log_var_gate.train()
+
     def cuda(self, device_id=0):
         # place all modules on the GPU
-        self.prior_mean.cuda(device_id)
-        if self.prior_log_var is not None:
-            self.prior_log_var.cuda(device_id)
+        if self.learn_prior:
+            self.prior_mean.cuda(device_id)
+            if self.prior_log_var is not None:
+                self.prior_log_var.cuda(device_id)
         self.posterior_mean.cuda(device_id)
         self.posterior_log_var.cuda(device_id)
         if self.update_form == 'highway':
@@ -353,41 +392,44 @@ class GaussianVariable(object):
 
     def decoder_parameters(self):
         decoder_params = []
-        decoder_params.extend(list(self.prior_mean.parameters()))
-        if self.prior_log_var is not None:
-            decoder_params.extend(list(self.prior_log_var.parameters()))
-        else:
-            decoder_params.append(self.prior.trainable_log_var)
+        if self.learn_prior:
+            decoder_params.extend(list(self.prior_mean.parameters()))
+            if self.prior_log_var is not None:
+                decoder_params.extend(list(self.prior_log_var.parameters()))
+            else:
+                decoder_params.append(self.prior.log_var)
         return decoder_params
 
     def state_parameters(self):
         return self.posterior.state_parameters()
 
-"""
+
 class ConvGaussianVariable(object):
 
-    def __init__(self, batch_size, n_variable_channels, filter_size, n_input, update_form):
+    def __init__(self, batch_size, n_variable_channels, filter_size, const_prior_var, n_input, update_form, learn_prior=True):
 
         self.batch_size = batch_size
         self.n_variable_channels = n_variable_channels
-        assert update_form in ['direct', 'highway'], 'Variable update type not found.'
+        assert update_form in ['direct', 'highway'], 'Variable update form not found.'
         self.update_form = update_form
+        self.learn_prior = learn_prior
 
-        self.prior_mean = Conv(n_input[1], filter_size, self.n_variable_channels)
-        self.prior_log_var = Dense(n_input[1], filter_size, self.n_variable_channels)
-        self.posterior_mean = Dense(n_input[0], filter_size, self.n_variable_channels)
-        self.posterior_log_var = Dense(n_input[0], filter_size, self.n_variable_channels)
+        if self.learn_prior:
+            self.prior_mean = Conv(n_input[1], filter_size, self.n_variable_channels)
+            self.prior_log_var = None
+            if not const_prior_var:
+                self.prior_log_var = Conv(n_input[1], filter_size, self.n_variable_channels)
+        self.posterior_mean = Conv(n_input[0], filter_size, self.n_variable_channels)
+        self.posterior_log_var = Conv(n_input[0], filter_size, self.n_variable_channels)
 
         if self.update_form == 'highway':
             self.posterior_mean_gate = Conv(n_input[0], filter_size, self.n_variable_channels, 'sigmoid')
-            self.posterior_log_var_gate = Dense(n_input[0], filter_size, self.n_variable_channels, 'sigmoid')
+            self.posterior_log_var_gate = Conv(n_input[0], filter_size, self.n_variable_channels, 'sigmoid')
 
-        self.prior = self.init_dist()
-        self.posterior = self.init_dist()
-
-    def init_dist(self):
-        return DiagonalGaussian(Variable(torch.zeros(self.batch_size, self.n_variable_channels, , )),
-                                Variable(torch.zeros(self.batch_size, self.n_variables)))
+        self.posterior = DiagonalGaussian()
+        self.prior = DiagonalGaussian()
+        if self.learn_prior and const_prior_var:
+            self.prior.log_var_trainable()
 
     def encode(self, input):
         # encode the mean and log variance, update, return sample
@@ -457,13 +499,10 @@ class ConvGaussianVariable(object):
         return self.posterior.state_parameters()
 
 
-"""
-
-
 class LatentLevel(object):
 
-    def __init__(self, batch_size, encoder_arch, decoder_arch, n_latent, n_det, encoding_form, constant_prior_variances,
-                 variable_input_sizes, variable_update_form):
+    def __init__(self, batch_size, encoder_arch, decoder_arch, n_latent, n_det, encoding_form, const_prior_var,
+                 variable_input_sizes, variable_update_form, learn_prior=True):
 
         self.batch_size = batch_size
         self.n_latent = n_latent
@@ -472,7 +511,7 @@ class LatentLevel(object):
         self.encoder = MultiLayerPerceptron(**encoder_arch)
         self.decoder = MultiLayerPerceptron(**decoder_arch)
 
-        self.latent = GaussianVariable(self.batch_size, self.n_latent, constant_prior_variances, variable_input_sizes, variable_update_form)
+        self.latent = GaussianVariable(self.batch_size, self.n_latent, const_prior_var, variable_input_sizes, variable_update_form, learn_prior)
         self.deterministic_encoder = Dense(variable_input_sizes[0], n_det[0]) if n_det[0] > 0 else None
         self.deterministic_decoder = Dense(variable_input_sizes[1], n_det[1]) if n_det[1] > 0 else None
 
@@ -514,6 +553,16 @@ class LatentLevel(object):
     def trainable_state(self):
         self.latent.trainable_mean()
         self.latent.trainable_log_var()
+
+    def eval(self):
+        self.encoder.eval()
+        self.decoder.eval()
+        self.latent.eval()
+
+    def train(self):
+        self.encoder.train()
+        self.decoder.train()
+        self.latent.train()
 
     def cuda(self, device_id=0):
         # place all modules on the GPU

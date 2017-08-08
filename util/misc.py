@@ -1,5 +1,8 @@
 import torch.optim as opt
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from logs import load_opt_checkpoint
+
+# todo: allow for options in optimzer and scheduler
 
 
 def get_optimizers(train_config, model):
@@ -8,17 +11,14 @@ def get_optimizers(train_config, model):
         enc_opt, dec_opt = load_opt_checkpoint()
     else:
         encoder_params = model.encoder_parameters()
-        #enc_opt = opt.Adamax(encoder_params, lr=train_config['learning_rate'] / train_config['n_iterations'])
-        enc_opt = opt.Adamax(encoder_params, lr=5*train_config['learning_rate'])
+        enc_opt = opt.Adam(encoder_params, lr=train_config['encoder_learning_rate'] / train_config['n_iterations'])
 
         decoder_params = model.decoder_parameters()
-        dec_opt = opt.Adamax(decoder_params, lr=train_config['learning_rate'])
+        dec_opt = opt.Adam(decoder_params, lr=train_config['decoder_learning_rate'])
 
-    #enc_sched = opt.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, mode='min', factor=0.5)
-    enc_sched = None
+    #enc_sched = ReduceLROnPlateau(enc_opt, mode='min', factor=0.5)
+    #dec_sched = ReduceLROnPlateau(dec_opt, mode='min', factor=0.5)
 
-    #dec_sched = opt.lr_scheduler.ReduceLROnPlateau(decoder_optimizer, mode='min', factor=0.5)
-    dec_sched = None
+    enc_sched = dec_sched = None
 
     return (enc_opt, enc_sched), (dec_opt, dec_sched)
-

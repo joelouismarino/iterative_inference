@@ -21,7 +21,7 @@ def train_on_batch(model, batch, n_iterations, optimizers):
         model.encode(batch)
         model.decode()
         elbo = model.elbo(batch, averaged=True)
-        (-elbo).backward(retain_variables=True)
+        (-elbo).backward(retain_graph=True)
 
     # final iteration
     dec_opt.zero_grad()
@@ -31,6 +31,7 @@ def train_on_batch(model, batch, n_iterations, optimizers):
     elbo, cond_log_like, kl = model.losses(batch, averaged=True)
     (-elbo).backward()
 
+    # update parameters
     enc_opt.step()
     dec_opt.step()
 
@@ -42,7 +43,7 @@ def train_on_batch(model, batch, n_iterations, optimizers):
     return elbo, cond_log_like, kl
 
 
-# todo: add importance sampling x 5000 samples
+# todo: add importance sampling
 def run_on_batch(model, batch, n_iterations, vis=False):
     """Runs the model on a single batch. If visualizing, stores posteriors, priors, and output distributions."""
 
@@ -159,19 +160,20 @@ def train(model, train_config, data_loader, optimizers):
     avg_kl = [[] for _ in range(len(model.levels))]
 
     for batch, _ in data_loader:
-        batch = Variable(batch)
         if train_config['cuda_device'] is not None:
-            batch = batch.cuda(train_config['cuda_device'])
+            batch = Variable(batch.cuda(train_config['cuda_device']))
+        else:
+            batch = Variable(batch)
 
         if model.output_distribution == 'bernoulli':
             batch = torch.bernoulli(batch / 255.)
 
         elbo, cond_log_like, kl = train_on_batch(model, batch, train_config['n_iterations'], optimizers)
 
-        avg_elbo.append(elbo[0])
-        avg_cond_log_like.append(cond_log_like[0])
+        avg_elbo.append(elbo)
+        avg_cond_log_like.append(cond_log_like)
         for l in range(len(avg_kl)):
-            avg_kl[l].append(kl[l][0])
+            avg_kl[l].append(kl[l])
 
     return np.mean(avg_elbo), np.mean(avg_cond_log_like), [np.mean(avg_kl[l]) for l in range(len(model.levels))]
 

@@ -4,104 +4,142 @@ import numpy as np
 from torch.autograd import Variable
 
 
+class PointEstimate(object):
+
+    def __init__(self, mean=None):
+        self.mean = mean
+        self._cuda_device = None
+
+    def sample(self):
+        assert self.mean is not None, 'Point estimate is None.'
+        return self.mean
+
+    def log_prob(self, sample=None):
+        #assert self.mean is not None, 'Point estimate is None.'
+        #if sample is None:
+        #    sample = self.mean
+        pass
+
+    def reset_mean(self):
+        assert self.mean is not None, 'Mean is None.'
+        mean = torch.zeros(self.mean.size())
+        if self._cuda_device is not None:
+            mean = mean.cuda(self._cuda_device)
+        mean = Variable(mean, requires_grad=self.mean.requires_grad)
+        self.mean = mean
+        self._sample = None
+
+    def mean_trainable(self):
+        assert self.mean is not None, 'Mean is None.'
+        self.mean = Variable(self.mean.data, requires_grad=True)
+
+    def state_parameters(self):
+        return self.mean
+
+    def cuda(self, device_id=0):
+        if self.mean is not None:
+            self.mean = Variable(self.mean.data.cuda(device_id), requires_grad=self.mean.requires_grad)
+        self._cuda_device = device_id
+
+
 class DiagonalGaussian(object):
 
-    def __init__(self, mean, log_var):
+    def __init__(self, mean=None, log_var=None):
         self.mean = mean
         self.log_var = log_var
         self._sample = None
         self._cuda_device = None
-        self.trainable_mean = None
-        self.trainable_log_var = None
 
     def sample(self, resample=False):
         if self._sample is None or resample:
             random_normal = Variable(torch.randn(self.mean.size()))
             if self._cuda_device is not None:
                 random_normal = random_normal.cuda(self._cuda_device)
+            assert self.mean is not None and self.log_var is not None, 'Mean or log variance are None.'
             self._sample = self.mean + torch.exp(0.5 * self.log_var) * random_normal
         return self._sample
 
     def log_prob(self, sample=None):
         if sample is None:
             sample = self.sample()
+        assert self.mean is not None and self.log_var is not None, 'Mean or log variance are None.'
         return -0.5 * (self.log_var + np.log(2 * np.pi) + torch.pow(sample - self.mean, 2) / (torch.exp(self.log_var) + 1e-7))
 
     def reset_mean(self):
+        assert self.mean is not None, 'Mean is None.'
+        mean = torch.zeros(self.mean.size())
         if self._cuda_device is not None:
-            self.mean = torch.zeros(self.mean.size()).cuda(self._cuda_device)
-        else:
-            self.mean = torch.zeros(self.mean.size())
-        self.mean = Variable(self.mean)
+            mean = mean.cuda(self._cuda_device)
+        mean = Variable(mean, requires_grad=self.mean.requires_grad)
+        self.mean = mean
         self._sample = None
 
     def reset_log_var(self):
+        assert self.log_var is not None, 'Log variance is None.'
+        log_var = torch.zeros(self.log_var.size())
         if self._cuda_device is not None:
-            self.log_var = torch.zeros(self.log_var.size()).cuda(self._cuda_device)
-        else:
-            self.log_var = torch.zeros(self.log_var.size())
-        self.log_var = Variable(self.log_var)
+            log_var = log_var.cuda(self._cuda_device)
+        log_var = Variable(log_var, requires_grad=self.log_var.requires_grad)
+        self.log_var = log_var
         self._sample = None
 
     def mean_trainable(self):
-        self.trainable_mean = Variable(torch.zeros(self.mean.size()[1:]), requires_grad=True)
-        if self._cuda_device is not None:
-            self.trainable_mean = self.trainable_mean.cuda(self._cuda_device)
-        if len(self.mean_size()) == 2:
-            self.mean = self.trainable_mean.unsqueeze(0).repeat(self.mean.size()[0], 1)
-        else:
-            self.mean = self.trainable_mean.unsqueeze(0).repeat(self.mean.size()[0], 1, 1, 1)
+        assert self.mean is not None, 'Mean is None.'
+        self.mean = Variable(self.mean.data, requires_grad=True)
 
     def log_var_trainable(self):
-        self.trainable_log_var = Variable(torch.zeros(self.log_var.size()[1:]), requires_grad=True)
-        if self._cuda_device is not None:
-            self.trainable_log_var = self.trainable_log_var.cuda(self._cuda_device)
-        if len(self.log_var.size()) == 2:
-            self.log_var = self.trainable_log_var.unsqueeze(0).repeat(self.log_var.size()[0], 1)
-        else:
-            self.log_var = self.trainable_log_var.unsqueeze(0).repeat(self.log_var.size()[0], 1, 1, 1)
+        assert self.log_var is not None, 'Log variance is None.'
+        self.log_var = Variable(self.log_var.data, requires_grad=True)
 
     def state_parameters(self):
         return self.mean, self.log_var
 
     def cuda(self, device_id=0):
-        if self.trainable_mean is not None:
-            self.trainble_mean = self.trainable_mean.cuda(device_id)
-        if self.trainable_log_var is not None:
-            self.trainable_log_var = self.trainable_log_var.cuda(device_id)
+        if self.mean is not None:
+            self.mean = Variable(self.mean.data.cuda(device_id), requires_grad=self.mean.requires_grad)
+        if self.log_var is not None:
+            self.log_var = Variable(self.log_var.data.cuda(device_id), requires_grad=self.log_var.requires_grad)
         if self._sample is not None:
-            self._sample = self._sample.cuda(device_id)
-        self.mean = self.mean.cuda(device_id)
-        self.log_var = self.log_var.cuda(device_id)
+            self._sample = Variable(self._sample.data.cuda(device_id))
         self._cuda_device = device_id
 
 
 class Bernoulli(object):
 
-    def __init__(self, mean):
+    def __init__(self, mean=None):
         self.mean = mean
         self._sample = None
         self._cuda_device = None
 
     def sample(self, resample=False):
-        self._sample = torch.bernoulli(self.mean)
+        if self._sample is None or resample:
+            assert self.mean is not None, 'Mean is None.'
+            self._sample = torch.bernoulli(self.mean)
         return self._sample
 
     def log_prob(self, sample=None):
         if sample is None:
             sample = self.sample()
+        assert self.mean is not None, 'Mean is None.'
         return sample * torch.log(self.mean + 1e-7) + (1 - sample) * torch.log(1 - self.mean + 1e-7)
 
     def reset_mean(self):
-        self.mean.data.fill_(0.)
-        self.sample = None
+        assert self.mean is not None, 'Mean is None.'
+        mean = torch.zeros(self.mean.size())
+        if self._cuda_device is not None:
+            mean = mean.cuda(self._cuda_device)
+        mean = Variable(mean, requires_grad=self.mean.requires_grad)
+        self.mean = mean
+        self._sample = None
 
-    def mean_trainable(self, trainable=True):
-        self.mean.requires_grad = trainable
+    def mean_trainable(self):
+        assert self.mean is not None, 'Mean is None.'
+        self.mean = Variable(self.mean.data, requires_grad=True)
 
     def state_parameters(self):
         return self.mean
 
     def cuda(self, device_id):
-        self.mean.cuda()
+        if self.mean is not None:
+            self.mean = self.mean.cuda(device_id)
         self._cuda_device = device_id
