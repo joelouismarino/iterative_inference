@@ -165,7 +165,7 @@ def load_data(dataset, data_path):
         _val = unpickle(os.path.join(data_path, 'CIFAR_10', 'cifar-10-batches-py', 'test_batch'))
         val = _val['data'].astype('float32').reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2)
         val_labels = np.array(_val['labels'])
-        label_dict = unpickle(os.path.join(data_path, 'CIFAR_10', 'batches.meta'))
+        label_dict = unpickle(os.path.join(data_path, 'CIFAR_10', 'cifar-10-batches-py', 'batches.meta'))
         label_names = label_dict['label_names']
 
     elif dataset == 'CIFAR_100':
@@ -184,7 +184,7 @@ def load_data(dataset, data_path):
         _val = unpickle(os.path.join(data_path, 'CIFAR_100', 'cifar-100-python', 'test'))
         val = _val['data'].astype('float32').reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2)
         val_labels = np.array(_val['fine_labels'])
-        label_dict = unpickle(os.path.join(data_path, 'CIFAR_100', 'meta'))
+        label_dict = unpickle(os.path.join(data_path, 'CIFAR_100', 'cifar-100-python', 'meta'))
         label_names = label_dict['fine_label_names']
 
     elif dataset == 'SVHN':
@@ -216,6 +216,7 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'imagenet_32'))
             tar.close()
             os.remove(os.path.join(data_path, 'imagenet_32', 'train_32x32.tar'))
+        train = os.path.join(data_path, 'imagenet_32', 'train_32x32')
 
         if not os.path.exists(os.path.join(data_path, 'imagenet_32', 'valid_32x32')):
             print 'Downloading ImageNet 32 x 32 validation data...'
@@ -225,6 +226,7 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'imagenet_32'))
             tar.close()
             os.remove(os.path.join(data_path, 'imagenet_32', 'valid_32x32.tar'))
+        val = os.path.join(data_path, 'imagenet_32', 'valid_32x32')
 
     elif dataset == 'imagenet_64':
         if not os.path.exists(os.path.join(data_path, 'imagenet_64')):
@@ -237,6 +239,7 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'imagenet_64'))
             tar.close()
             os.remove(os.path.join(data_path, 'imagenet_64', 'train_64x64.tar'))
+        train = os.path.join(data_path, 'imagenet_64', 'train_64x64')
 
         if not os.path.exists(os.path.join(data_path, 'imagenet_64', 'valid_64x64')):
             print 'Downloading ImageNet 64 x 64 validation data...'
@@ -246,6 +249,7 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'imagenet_64'))
             tar.close()
             os.remove(os.path.join(data_path, 'imagenet_64', 'valid_64x64.tar'))
+        val = os.path.join(data_path, 'imagenet_64', 'valid_64x64')
 
     else:
         raise Exception('Dataset ' + str(dataset) + ' not found.')
