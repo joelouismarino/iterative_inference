@@ -9,7 +9,7 @@ from util.modules import Dense, MultiLayerPerceptron, GaussianVariable, LatentLe
 
 # todo: add support for multiple samples to encode, decode
 # todo: allow for printing out the model architecture
-# todo: implement cpu() method
+# todo: variable concatenation
 
 
 def get_model(train_config, arch, data_size):
@@ -163,14 +163,15 @@ class LatentVariableModel(object):
             encoding = input - 0.5
         if 'bottom_error' in self.encoding_form:
             error = input - self.output_dist.mean.detach()
-            encoding = torch.cat((encoding, error)) if encoding else error
+            encoding = error if encoding is None else torch.cat((encoding, error), dim=1)
         if 'bottom_norm_error' in self.encoding_form:
             error = input - self.output_dist.mean.detach()
+            norm_error = None
             if self.output_distribution == 'gaussian':
                 norm_error = error / torch.exp(self.output_dist.log_var.detach())
             elif self.output_distribution == 'bernoulli':
-                pass
-            encoding = torch.cat((encoding, norm_error)) if encoding else norm_error
+                norm_error = None
+            encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), dim=1)
         return encoding
 
     def encode(self, input):
@@ -306,19 +307,31 @@ class LatentVariableModel(object):
             else:
                 self.log_var_output.train()
 
+    def random_re_init(self, re_init=0.1):
+        pass
+
     def cuda(self, device_id=0):
         # place the model on the GPU
         self._cuda_device = device_id
         for latent_level in self.levels:
             latent_level.cuda(device_id)
-        self.mean_output.cuda(device_id)
+        self.mean_output = self.mean_output.cuda(device_id)
         if self.output_distribution == 'gaussian':
             if self.constant_variances:
                 self.trainable_log_var = self.trainable_log_var.cuda(device_id)
                 self.log_var_output = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
             else:
-                self.log_var_output.cuda(device_id)
+                self.log_var_output = self.log_var_output.cuda(device_id)
 
     def cpu(self):
         # place the model on the CPU
-        pass
+        self._cuda_device = None
+        for latent_level in self.levels:
+            latent_level.cpu()
+        self.mean_output = self.mean_output.cpu()
+        if self.output_distribution == 'gaussian':
+            if self.constant_variances:
+                self.trainable_log_var = self.trainable_log_var.cpu()
+                self.log_var_output = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
+            else:
+                self.log_var_output = self.log_var_output.cpu()

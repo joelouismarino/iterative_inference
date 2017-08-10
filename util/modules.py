@@ -7,6 +7,7 @@ from distributions import DiagonalGaussian
 
 # todo: add inverse auto-regressive flow to GaussianVariable
 # todo: get conv modules working
+# todo: figure out why dropout causes the network to blow up
 
 
 class Dense(nn.Module):
@@ -23,16 +24,20 @@ class Dense(nn.Module):
         if weight_norm:
             self.linear = nn.utils.weight_norm(self.linear, name='weight')
 
+        init_gain = 1.
+
         if non_linearity is None:
             self.non_linearity = None
         elif non_linearity == 'relu':
             self.non_linearity = nn.ReLU()
+            init_gain = init.calculate_gain('relu')
         elif non_linearity == 'elu':
             self.non_linearity = nn.ELU()
         elif non_linearity == 'selu':
             self.non_linearity = nn.SELU()
         elif non_linearity == 'tanh':
             self.non_linearity = nn.Tanh()
+            init_gain = init.calculate_gain('tanh')
         elif non_linearity == 'sigmoid':
             self.non_linearity = nn.Sigmoid()
         else:
@@ -45,15 +50,15 @@ class Dense(nn.Module):
         if initialize == 'normal':
             init.normal(self.linear.weight)
         elif initialize == 'glorot_uniform':
-            init.xavier_uniform(self.linear.weight)
+            init.xavier_uniform(self.linear.weight, gain=init_gain)
         elif initialize == 'glorot_normal':
-            init.xavier_normal(self.linear.weight)
+            init.xavier_normal(self.linear.weight, gain=init_gain)
         elif initialize == 'kaiming_uniform':
             init.kaiming_uniform(self.linear.weight)
         elif initialize == 'kaiming_normal':
             init.kaiming_normal(self.linear.weight)
         elif initialize == 'orthogonal':
-            init.orthogonal(self.linear.weight)
+            init.orthogonal(self.linear.weight, gain=init_gain)
         elif initialize == '':
             pass
         else:

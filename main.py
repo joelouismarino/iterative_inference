@@ -9,10 +9,12 @@ import time
 
 # todo: better visualization
 #           - visualize errors at input level
-#           - plot learning rate over epochs
 #           - latent traversal of lowest variance dimensions
+#           - plot number of 'dead' units or active units
 # todo: better data preprocessing (normalization, etc.)
 # todo: add support for online learning
+# todo: write functions to randomly re-initialize parts of the network during training or turn on/add units
+
 
 log_root = '/home/joe/Research/iterative_inference_logs/'
 log_path, log_dir = init_log(log_root, train_config)
@@ -31,7 +33,7 @@ model = get_model(train_config, arch, tuple(next(iter(train_loader))[0].size()[1
 # get optimizers
 (enc_opt, enc_sched), (dec_opt, dec_sched) = get_optimizers(train_config, model)
 
-for epoch in range(500):
+for epoch in range(1000):
     print 'Epoch: ' + str(epoch+1)
     # train
     tic = time.time()
@@ -41,8 +43,8 @@ for epoch in range(500):
     print 'Time: ' + str(toc - tic)
     # validation
     visualize = False
-    if epoch % 100 == 0:
-        visualize = True
+    #if epoch % 100 == 0:
+    #    visualize = True
     model.eval()
     _, averages, _ = run(model, train_config, val_loader, epoch+1, handle_dict, vis=visualize, label_names=label_names)
     save_env()

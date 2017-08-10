@@ -18,7 +18,7 @@ def init_log(log_root, train_config):
         else:
             raise Exception('Experiment folder ' + train_config['resume_experiment'] + ' not found.')
 
-    log_dir = strftime("%d_%b_%Y_%H_%M_%S", gmtime()) + '/'
+    log_dir = strftime("%b_%d_%Y_%H_%M_%S") + '/'
     log_path = os.path.join(log_root, log_dir)
     os.makedirs(log_path)
     os.system("rsync -au --include '*/' --include '*.py' --exclude '*' . " + log_path + "source")

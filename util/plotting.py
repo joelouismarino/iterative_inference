@@ -35,6 +35,8 @@ def initialize_plots(train_config, arch):
     cond_log_like_handle = plot_line(nans, np.ones((1, 2)), legend=['Train', 'Validation'], title='Conditional Log Likelihood', xlabel='Epochs', ylabel='-log P(x | z) (Nats)', xformat='log', yformat='log')
     kl_handle = plot_line(kl_nans, np.ones((1, 2 * len(arch['n_latent']))), legend=kl_legend, title='KL Divergence', xlabel='Epochs', ylabel='KL(q || p) (Nats)', xformat='log', yformat='log')
 
+    lr_handle = plot_line(nans, np.ones((1, 2)), legend=['Encoder', 'Decoder'], title='Learning Rates', xlabel='Epochs', ylabel='Learning Rate', xformat='log', yformat='log')
+
     handle_dict = dict(elbo=elbo_handle, cond_log_like=cond_log_like_handle, kl=kl_handle)
 
     if train_config['n_iterations'] > 1:
@@ -59,6 +61,7 @@ def initialize_plots(train_config, arch):
         handle_dict['elbo_improvement'] = elbo_improvement_handle
         handle_dict['recon_improvement'] = recon_improvement_handle
         handle_dict['kl_improvement'] = kl_improvement_handle
+        handle_dict['lr'] = lr_handle
 
     return handle_dict
 
@@ -159,6 +162,10 @@ def plot_train(func):
         update_trace(np.array([-avg_cond_log_like]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Train')
         for level in range(len(model.levels)):
             update_trace(np.array([avg_kl[level]]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Train, Level ' + str(level))
+        if optimizers[0] is not None:
+            update_trace(np.array([optimizers[0]['param_groups'][0]['lr']]), np.array([epoch]).astype(int), win=handle_dict['lr'], name='Encoder')
+        if optimizers[1] is not None:
+            update_trace(np.array([optimizers[1]['param_groups'][0]['lr']]), np.array([epoch]).astype(int), win=handle_dict['lr'], name='Decoder')
         return output, handle_dict
     return plotting_func
 
