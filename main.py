@@ -13,7 +13,7 @@ import time
 #           - plot number of 'dead' units or active units
 # todo: better data preprocessing (normalization, etc.)
 # todo: add support for online learning
-# todo: write functions to randomly re-initialize parts of the network during training or turn on/add units
+# todo: implement proper evaluation
 
 
 log_root = '/home/joe/Research/iterative_inference_logs/'
@@ -25,7 +25,8 @@ vis, handle_dict = init_plot(train_config, arch, env=log_dir)
 
 # load data, labels
 data_path = '/home/joe/Datasets'
-train_loader, val_loader, label_names = load_data(train_config['dataset'], data_path, train_config['batch_size'], cuda_device=train_config['cuda_device'])
+train_loader, val_loader, label_names = load_data(train_config['dataset'], data_path, train_config['batch_size'],
+                                                  cuda_device=train_config['cuda_device'])
 
 # construct model
 model = get_model(train_config, arch, tuple(next(iter(train_loader))[0].size()[1:]))
@@ -42,9 +43,9 @@ for epoch in range(1000):
     toc = time.time()
     print 'Time: ' + str(toc - tic)
     # validation
-    visualize = False
-    #if epoch % 100 == 0:
-    #    visualize = True
+    visualize = True
+    if epoch % 100 == 0:
+        visualize = True
     model.eval()
     _, averages, _ = run(model, train_config, val_loader, epoch+1, handle_dict, vis=visualize, label_names=label_names)
     save_env()

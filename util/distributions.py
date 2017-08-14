@@ -41,6 +41,10 @@ class PointEstimate(object):
             self.mean = Variable(self.mean.data.cuda(device_id), requires_grad=self.mean.requires_grad)
         self._cuda_device = device_id
 
+    def cpu(self):
+        if self.mean is not None:
+            self.mean = self.mean.cpu()
+        self._cuda_device = None
 
 class DiagonalGaussian(object):
 
@@ -103,6 +107,14 @@ class DiagonalGaussian(object):
             self._sample = Variable(self._sample.data.cuda(device_id))
         self._cuda_device = device_id
 
+    def cpu(self):
+        if self.mean is not None:
+            self.mean = self.mean.cpu()
+        if self.log_var is not None:
+            self.log_var = self.log_var.cpu()
+        if self._sample is not None:
+            self._sample = self.sample.cpu()
+        self._cuda_device = None
 
 class Bernoulli(object):
 
@@ -143,3 +155,8 @@ class Bernoulli(object):
         if self.mean is not None:
             self.mean = self.mean.cuda(device_id)
         self._cuda_device = device_id
+
+    def cpu(self):
+        if self.mean is not None:
+            self.mean = self.mean.cpu()
+        self._cuda_device = None

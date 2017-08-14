@@ -13,7 +13,7 @@ def train_on_batch(model, batch, n_iterations, optimizers):
 
     # initialize the model
     enc_opt.zero_grad()
-    model.reset()
+    model.reset_state()
     model.decode()
 
     # inference iterations
@@ -60,7 +60,7 @@ def run_on_batch(model, batch, n_iterations, vis=False):
         prior = [np.zeros([batch_shape[0], n_iterations+1, 2, model.levels[level].n_latent]) for level in range(len(model.levels))]
 
     # initialize the model
-    model.reset()
+    model.reset_state()
     model.decode()
     elbo, cond_log_like, kl = model.losses(batch)
 

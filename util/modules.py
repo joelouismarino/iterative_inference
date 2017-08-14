@@ -271,7 +271,7 @@ class MultiLayerConv(nn.Module):
         return input
 
 
-class GaussianVariable(object):
+class DenseGaussianVariable(object):
 
     def __init__(self, batch_size, n_variables, const_prior_var, n_input, update_form, learn_prior=True):
 
@@ -504,10 +504,10 @@ class ConvGaussianVariable(object):
         return self.posterior.state_parameters()
 
 
-class LatentLevel(object):
+class DenseLatentLevel(object):
 
     def __init__(self, batch_size, encoder_arch, decoder_arch, n_latent, n_det, encoding_form, const_prior_var,
-                 variable_input_sizes, variable_update_form, learn_prior=True):
+                 variable_update_form):
 
         self.batch_size = batch_size
         self.n_latent = n_latent
@@ -516,7 +516,10 @@ class LatentLevel(object):
         self.encoder = MultiLayerPerceptron(**encoder_arch)
         self.decoder = MultiLayerPerceptron(**decoder_arch)
 
-        self.latent = GaussianVariable(self.batch_size, self.n_latent, const_prior_var, variable_input_sizes, variable_update_form, learn_prior)
+        variable_input_sizes = (encoder_arch['n_units'], decoder_arch['n_units'])
+
+        self.latent = DenseGaussianVariable(self.batch_size, self.n_latent, const_prior_var, variable_input_sizes,
+                                            variable_update_form)
         self.deterministic_encoder = Dense(variable_input_sizes[0], n_det[0]) if n_det[0] > 0 else None
         self.deterministic_decoder = Dense(variable_input_sizes[1], n_det[1]) if n_det[1] > 0 else None
 
@@ -542,12 +545,13 @@ class LatentLevel(object):
         return output
 
     def decode(self, input, generate=False):
-        # sample the latent variables, concatenate any deterministic units, then pass through the decoder
-        sample = self.latent.decode(input, generate=generate)
+        # decode the input, sample the latent variable, concatenate any deterministic units
+        decoded = self.decoder(input)
+        sample = self.latent.decode(decoded, generate=generate)
         if self.deterministic_decoder:
-            det = self.deterministic_decoder(input)
+            det = self.deterministic_decoder(decoded)
             sample = torch.cat((sample, det), 1)
-        return self.decoder(sample)
+        return sample
 
     def kl_divergence(self):
         return self.latent.kl_divergence()

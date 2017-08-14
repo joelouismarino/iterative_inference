@@ -37,7 +37,9 @@ def initialize_plots(train_config, arch):
 
     lr_handle = plot_line(nans, np.ones((1, 2)), legend=['Encoder', 'Decoder'], title='Learning Rates', xlabel='Epochs', ylabel='Learning Rate', xformat='log', yformat='log')
 
-    handle_dict = dict(elbo=elbo_handle, cond_log_like=cond_log_like_handle, kl=kl_handle)
+    #inactive_units_handle = plot_line()
+
+    handle_dict = dict(elbo=elbo_handle, cond_log_like=cond_log_like_handle, kl=kl_handle, lr=lr_handle)
 
     if train_config['n_iterations'] > 1:
         # plot of average improvement over iterations on validation set
@@ -61,7 +63,6 @@ def initialize_plots(train_config, arch):
         handle_dict['elbo_improvement'] = elbo_improvement_handle
         handle_dict['recon_improvement'] = recon_improvement_handle
         handle_dict['kl_improvement'] = kl_improvement_handle
-        handle_dict['lr'] = lr_handle
 
     return handle_dict
 
@@ -163,9 +164,9 @@ def plot_train(func):
         for level in range(len(model.levels)):
             update_trace(np.array([avg_kl[level]]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Train, Level ' + str(level))
         if optimizers[0] is not None:
-            update_trace(np.array([optimizers[0]['param_groups'][0]['lr']]), np.array([epoch]).astype(int), win=handle_dict['lr'], name='Encoder')
+            update_trace(np.array([optimizers[0].param_groups[0]['lr']]), np.array([epoch]).astype(int), win=handle_dict['lr'], name='Encoder')
         if optimizers[1] is not None:
-            update_trace(np.array([optimizers[1]['param_groups'][0]['lr']]), np.array([epoch]).astype(int), win=handle_dict['lr'], name='Decoder')
+            update_trace(np.array([optimizers[1].param_groups[0]['lr']]), np.array([epoch]).astype(int), win=handle_dict['lr'], name='Decoder')
         return output, handle_dict
     return plotting_func
 
@@ -187,6 +188,9 @@ def plot_model_vis(func):
             update_trace(np.array([average_kl[level]]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Validation, Level ' + str(level))
         averages = average_elbo, average_cond_log_like, average_kl
 
+        # plot number of inactive units
+
+
         if train_config['n_iterations'] > 1:
             # plot average improvement on metrics over iterations
             elbo_improvement = 100. * np.mean(np.divide(total_elbo[:, 1] - total_elbo[:, -1], total_elbo[:, 1]), axis=0)
@@ -206,8 +210,36 @@ def plot_model_vis(func):
             plot_images(total_recon[:batch_size, 1].reshape([batch_size]+data_shape), caption='Reconstructions, Epoch ' + str(epoch))
             plot_images(samples.reshape([batch_size]+data_shape), caption='Samples, Epoch ' + str(epoch))
 
-            for level in range(len(model.levels)):
-                plot_tsne(total_posterior[level][:, 1, 0], 1 + total_labels, title='T-SNE Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level), legend=label_names)
+            # plot t-sne for each level's posterior
+            #for level in range(len(model.levels)):
+            #    plot_tsne(total_posterior[level][:, 1, 0], 1 + total_labels, title='T-SNE Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level), legend=label_names)
+
+            # plot ELBO, reconstruction loss, KL divergence over inference iterations
+            if train_config['n_iterations'] > 1:
+
+                legend = ['ELBO', 'log p(x | z)']
+
+                for level in range(len(model.levels)):
+                    legend.append('KL Divergence, Level ' + str(level))
+
+                nans = np.zeros((1, 2 + len(model.levels)))
+                nans.fill(np.nan)
+                indices = np.ones((1, 2 + len(model.levels)))
+
+                handle = plot_line(nans, indices, legend=legend, title='Average Metrics During Inference Iterations, Epoch ' + str(epoch),
+                                   xlabel='Inference Iterations', ylabel='Metrics (Nats)')
+
+                iterations = np.arange(0, train_config['n_iterations']+1).astype(int)
+
+                ave_elbo = np.mean(total_elbo, axis=0)
+                update_trace(ave_elbo, iterations, win=handle, name='ELBO')
+
+                ave_recon = np.mean(total_cond_log_like, axis=0)
+                update_trace(ave_recon, iterations, win=handle, name='log p(x | z)')
+
+                for level in range(len(model.levels)):
+                    ave_kl = np.mean(total_kl[level], axis=0)
+                    update_trace(ave_kl, iterations, win=handle, name='KL Divergence, Level ' + str(level))
 
         return output, averages, handle_dict
     return plotting_func

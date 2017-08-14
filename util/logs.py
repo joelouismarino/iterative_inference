@@ -2,7 +2,7 @@ import os
 import numpy as np
 import cPickle as pickle
 import torch
-from time import gmtime, strftime
+from time import strftime
 
 global log_path
 
