@@ -604,3 +604,7 @@ class DenseLatentLevel(object):
 
     def state_parameters(self):
         return self.latent.state_parameters()
+
+
+class ConvLatentLevel(object):
+    pass

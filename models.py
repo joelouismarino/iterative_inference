@@ -9,7 +9,7 @@ from util.modules import Dense, MultiLayerPerceptron, DenseGaussianVariable, Den
 
 # todo: add support for multiple samples to encode, decode
 # todo: allow for printing out the model architecture
-# todo: implement random re-initialization function
+# todo: implement random re-initialization
 
 
 def get_model(train_config, arch, data_size):
@@ -104,10 +104,10 @@ class LatentVariableModel(object):
     def encoder_input_size(self, level_num, arch):
         """Calculates the size of the encoding input to a level."""
 
-        def _encoding_size(_self, _level_num, _arch):
+        def _encoding_size(_self, _level_num, _arch, lower_level=False):
 
-            if level_num == 0:
-                latent_size = self.input_size
+            if _level_num == 0:
+                latent_size = _self.input_size
                 det_size = 0
             else:
                 latent_size = _arch['n_latent'][_level_num-1]
@@ -120,9 +120,9 @@ class LatentVariableModel(object):
                 encoding_size += latent_size
             if 'bottom_norm_error' in _self.encoding_form:
                 encoding_size += latent_size
-            if 'top_error' in _self.encoding_form:
+            if 'top_error' in _self.encoding_form and not lower_level:
                 encoding_size += _arch['n_latent'][_level_num]
-            if 'top_norm_error' in self.encoding_form:
+            if 'top_norm_error' in _self.encoding_form and not lower_level:
                 encoding_size += _arch['n_latent'][_level_num]
 
             return encoding_size
@@ -130,7 +130,7 @@ class LatentVariableModel(object):
         encoder_size = _encoding_size(self, level_num, arch)
         if self.concat_variables:
             for level in range(level_num):
-                encoder_size += _encoding_size(self, level, arch)
+                encoder_size += _encoding_size(self, level, arch, lower_level=True)
         return encoder_size
 
     def decoder_input_size(self, level_num, arch):
@@ -180,11 +180,13 @@ class LatentVariableModel(object):
         h = Variable(torch.zeros(self.batch_size, self.top_size))
         if self._cuda_device is not None:
             h = h.cuda(self._cuda_device)
+        concat = False
         for latent_level in self.levels[::-1]:
-            if self.concat_variables:
+            if self.concat_variables and concat:
                 h = torch.cat([h, latent_level.decode(h, generate)], dim=1)
             else:
                 h = latent_level.decode(h, generate)
+            concat = True
 
         h = self.output_decoder(h)
         self.output_dist.mean = self.mean_output(h)
@@ -262,6 +264,7 @@ class LatentVariableModel(object):
         params = []
         for level in self.levels:
             params.extend(level.decoder_parameters())
+        params.extend(list(self.output_decoder.parameters()))
         params.extend(list(self.mean_output.parameters()))
         if self.output_distribution == 'gaussian':
             if self.constant_variances:
