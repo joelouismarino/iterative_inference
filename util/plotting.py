@@ -154,15 +154,40 @@ def plot_tsne(data, labels=None, n_dims=3, title='', legend=None):
     plot_scatter(tsne_data, labels, legend=legend, title=title)
 
 
+def plot_latent_traversal():
+    pass
+
+
+def plot_recon_and_errors():
+    pass
+
+
+def plot_average_metrics(metrics, epoch, handle_dict, train_val):
+    """Plots the average metrics for train or validation."""
+    avg_elbo, avg_cond_log_like, avg_kl = metrics
+    update_trace(np.array([-avg_elbo]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name=train_val)
+    update_trace(np.array([-avg_cond_log_like]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name=train_val)
+    for level in range(len(avg_kl)):
+        update_trace(np.array([avg_kl[level]]), np.array([epoch]).astype(int), win=handle_dict['kl'], name=train_val + ', Level ' + str(level))
+
+
+def plot_average_improvement(metrics, epoch, handle_dict):
+    """Plots the average improvement on the metrics for the validation set."""
+    total_elbo, total_cond_log_like, total_kl = metrics
+    elbo_improvement = 100. * np.mean(np.divide(total_elbo[:, 1] - total_elbo[:, -1], total_elbo[:, 1]), axis=0)
+    update_trace(np.array([elbo_improvement]), np.array([epoch]).astype(int), win=handle_dict['elbo_improvement'], name='ELBO')
+    cond_log_like_improvement = 100. * np.mean(np.divide(total_cond_log_like[:, 1] - total_cond_log_like[:, -1], total_cond_log_like[:, 1]), axis=0)
+    update_trace(np.array([cond_log_like_improvement]), np.array([epoch]).astype(int), win=handle_dict['recon_improvement'], name='log P(x | z)')
+    for level in range(len(model.levels)):
+        kl_improvement = 100. * np.mean(np.divide(total_kl[level][:, 1] - total_kl[level][:, -1], total_kl[level][:, 1]), axis=0)
+        update_trace(np.array([kl_improvement]), np.array([epoch]).astype(int), win=handle_dict['kl_improvement'], name='Level ' + str(level))
+
+
 def plot_train(func):
     """Wrapper around training function to plot the outputs in corresponding visdom windows."""
     def plotting_func(model, train_config, data, epoch, handle_dict, optimizers):
         output = func(model, train_config, data, epoch, optimizers)
-        avg_elbo, avg_cond_log_like, avg_kl = output
-        update_trace(np.array([-avg_elbo]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name='Train')
-        update_trace(np.array([-avg_cond_log_like]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Train')
-        for level in range(len(model.levels)):
-            update_trace(np.array([avg_kl[level]]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Train, Level ' + str(level))
+        plot_average_metrics(output, epoch, handle_dict, 'Train')
         if optimizers[0] is not None:
             update_trace(np.array([optimizers[0].param_groups[0]['lr']]), np.array([epoch]).astype(int), win=handle_dict['lr'], name='Encoder')
         if optimizers[1] is not None:
@@ -179,29 +204,19 @@ def plot_model_vis(func):
 
         # plot average metrics on validation set
         average_elbo = np.mean(total_elbo[:, -1], axis=0)
-        update_trace(np.array([-average_elbo]), np.array([epoch]).astype(int), win=handle_dict['elbo'], name='Validation')
         average_cond_log_like = np.mean(total_cond_log_like[:, -1], axis=0)
-        update_trace(np.array([-average_cond_log_like]), np.array([epoch]).astype(int), win=handle_dict['cond_log_like'], name='Validation')
         average_kl = [0. for _ in range(len(model.levels))]
         for level in range(len(model.levels)):
             average_kl[level] = np.mean(total_kl[level][:, -1], axis=0)
-            update_trace(np.array([average_kl[level]]), np.array([epoch]).astype(int), win=handle_dict['kl'], name='Validation, Level ' + str(level))
         averages = average_elbo, average_cond_log_like, average_kl
+        plot_average_metrics(averages, epoch, handle_dict, 'Validation')
 
         # plot number of inactive units
 
-
+        # plot average improvement on metrics over iterations
         if train_config['n_iterations'] > 1:
-            # plot average improvement on metrics over iterations
-            elbo_improvement = 100. * np.mean(np.divide(total_elbo[:, 1] - total_elbo[:, -1], total_elbo[:, 1]), axis=0)
-            update_trace(np.array([elbo_improvement]), np.array([epoch]).astype(int), win=handle_dict['elbo_improvement'], name='ELBO')
+            plot_average_improvement([total_elbo, total_cond_log_like, total_kl], epoch, handle_dict)
 
-            cond_log_like_improvement = 100. * np.mean(np.divide(total_cond_log_like[:, 1] - total_cond_log_like[:, -1], total_cond_log_like[:, 1]), axis=0)
-            update_trace(np.array([cond_log_like_improvement]), np.array([epoch]).astype(int), win=handle_dict['recon_improvement'], name='log P(x | z)')
-
-            for level in range(len(model.levels)):
-                kl_improvement = 100. * np.mean(np.divide(total_kl[level][:, 1] - total_kl[level][:, -1], total_kl[level][:, 1]), axis=0)
-                update_trace(np.array([kl_improvement]), np.array([epoch]).astype(int), win=handle_dict['kl_improvement'], name='Level ' + str(level))
 
         if vis:
             # plot reconstructions, samples
@@ -211,8 +226,8 @@ def plot_model_vis(func):
             plot_images(samples.reshape([batch_size]+data_shape), caption='Samples, Epoch ' + str(epoch))
 
             # plot t-sne for each level's posterior
-            #for level in range(len(model.levels)):
-            #    plot_tsne(total_posterior[level][:, 1, 0], 1 + total_labels, title='T-SNE Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level), legend=label_names)
+            for level in range(len(model.levels)):
+                plot_tsne(total_posterior[level][:, 1, 0], 1 + total_labels, title='T-SNE Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level), legend=label_names)
 
             # plot ELBO, reconstruction loss, KL divergence over inference iterations
             if train_config['n_iterations'] > 1:

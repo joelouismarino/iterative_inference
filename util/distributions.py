@@ -20,9 +20,9 @@ class PointEstimate(object):
         #    sample = self.mean
         pass
 
-    def reset_mean(self):
-        assert self.mean is not None, 'Mean is None.'
-        mean = torch.zeros(self.mean.size())
+    def reset_mean(self, value=None):
+        assert self.mean is not None or value is not None, 'Mean is None.'
+        mean = value if value is not None else torch.zeros(self.mean.size())
         if self._cuda_device is not None:
             mean = mean.cuda(self._cuda_device)
         mean = Variable(mean, requires_grad=self.mean.requires_grad)
@@ -45,6 +45,7 @@ class PointEstimate(object):
         if self.mean is not None:
             self.mean = self.mean.cpu()
         self._cuda_device = None
+
 
 class DiagonalGaussian(object):
 
@@ -69,18 +70,18 @@ class DiagonalGaussian(object):
         assert self.mean is not None and self.log_var is not None, 'Mean or log variance are None.'
         return -0.5 * (self.log_var + np.log(2 * np.pi) + torch.pow(sample - self.mean, 2) / (torch.exp(self.log_var) + 1e-7))
 
-    def reset_mean(self):
-        assert self.mean is not None, 'Mean is None.'
-        mean = torch.zeros(self.mean.size())
+    def reset_mean(self, value=None):
+        assert self.mean is not None or value is not None, 'Mean is None.'
+        mean = value if value is not None else torch.zeros(self.mean.size())
         if self._cuda_device is not None:
             mean = mean.cuda(self._cuda_device)
         mean = Variable(mean, requires_grad=self.mean.requires_grad)
         self.mean = mean
         self._sample = None
 
-    def reset_log_var(self):
-        assert self.log_var is not None, 'Log variance is None.'
-        log_var = torch.zeros(self.log_var.size())
+    def reset_log_var(self, value=None):
+        assert self.log_var is not None or value is not None, 'Log variance is None.'
+        log_var = value if value is not None else torch.zeros(self.log_var.size())
         if self._cuda_device is not None:
             log_var = log_var.cuda(self._cuda_device)
         log_var = Variable(log_var, requires_grad=self.log_var.requires_grad)
@@ -116,6 +117,7 @@ class DiagonalGaussian(object):
             self._sample = self.sample.cpu()
         self._cuda_device = None
 
+
 class Bernoulli(object):
 
     def __init__(self, mean=None):
@@ -135,9 +137,9 @@ class Bernoulli(object):
         assert self.mean is not None, 'Mean is None.'
         return sample * torch.log(self.mean + 1e-7) + (1 - sample) * torch.log(1 - self.mean + 1e-7)
 
-    def reset_mean(self):
-        assert self.mean is not None, 'Mean is None.'
-        mean = torch.zeros(self.mean.size())
+    def reset_mean(self, value=None):
+        assert self.mean is not None or value is not None, 'Mean is None.'
+        mean = value if value is not None else torch.zeros(self.mean.size())
         if self._cuda_device is not None:
             mean = mean.cuda(self._cuda_device)
         mean = Variable(mean, requires_grad=self.mean.requires_grad)

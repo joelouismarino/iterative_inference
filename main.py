@@ -8,11 +8,10 @@ from util.logs import init_log, save_checkpoint
 import time
 
 # todo: better visualization
-#           - visualize errors at input level
+#           - visualize errors at input level and reconstructions over inference iterations
 #           - latent traversal of lowest variance dimensions
 #           - plot number of 'dead' units or active units
 # todo: better data preprocessing (normalization, etc.)
-# todo: add support for online learning
 # todo: implement proper evaluation
 
 
@@ -43,13 +42,13 @@ for epoch in range(1000):
     toc = time.time()
     print 'Time: ' + str(toc - tic)
     # validation
-    visualize = True
-    if epoch % 100 == 0:
-        visualize = True
+    visualize = False
+    #if epoch % 100 == 0:
+    #    visualize = True
     model.eval()
     _, averages, _ = run(model, train_config, val_loader, epoch+1, handle_dict, vis=visualize, label_names=label_names)
     save_env()
     #enc_sched.step(-averages[0])
     #dec_sched.step(-averages[0])
-    #if epoch % 100 == 0:
-    #    save_checkpoint(model, (enc_opt, dec_opt), epoch)
+    if epoch % 100 == 0:
+        save_checkpoint(model, (enc_opt, dec_opt), epoch)

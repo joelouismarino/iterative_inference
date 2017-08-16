@@ -62,7 +62,7 @@ class LatentVariableModel(object):
         decoder_arch['connection_type'] = arch['connection_type_dec']
         decoder_arch['batch_norm'] = arch['batch_norm_dec']
         decoder_arch['weight_norm'] = arch['weight_norm_dec']
-        encoder_arch['dropout'] = arch['dropout_dec']
+        decoder_arch['dropout'] = arch['dropout_dec']
 
         # construct a DenseLatentLevel for each level of latent variables
         for level in range(len(arch['n_latent'])):
@@ -79,8 +79,10 @@ class LatentVariableModel(object):
             n_latent = arch['n_latent'][level]
             n_det = [arch['n_det_enc'][level], arch['n_det_dec'][level]]
 
+            learn_prior = True if arch['learn_top_prior'] else (level != len(arch['n_latent'])-1)
+
             self.levels[level] = DenseLatentLevel(self.batch_size, encoder_arch, decoder_arch, n_latent, n_det,
-                                                  encoding_form, const_prior_var, variable_update_form)
+                                                  encoding_form, const_prior_var, variable_update_form, learn_prior)
 
         # construct the output decoder
         decoder_arch['n_in'] = self.decoder_input_size(-1, arch)
@@ -284,6 +286,7 @@ class LatentVariableModel(object):
         """Puts the model into eval mode (affects batch_norm and dropout)."""
         for latent_level in self.levels:
             latent_level.eval()
+        self.output_decoder.eval()
         self.mean_output.eval()
         if self.output_distribution == 'gaussian':
             if self.constant_variances:
@@ -295,6 +298,7 @@ class LatentVariableModel(object):
         """Puts the model into train mode (affects batch_norm and dropout)."""
         for latent_level in self.levels:
             latent_level.train()
+        self.output_decoder.train()
         self.mean_output.train()
         if self.output_distribution == 'gaussian':
             if self.constant_variances:

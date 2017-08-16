@@ -11,10 +11,10 @@ def train_on_batch(model, batch, n_iterations, optimizers):
 
     enc_opt, dec_opt = optimizers
 
-    # initialize the model
+    # initialize the model from the prior
     enc_opt.zero_grad()
+    model.decode(generate=True)
     model.reset_state()
-    model.decode()
 
     # inference iterations
     for _ in range(n_iterations - 1):
@@ -59,9 +59,9 @@ def run_on_batch(model, batch, n_iterations, vis=False):
         posterior = [np.zeros([batch_shape[0], n_iterations+1, 2, model.levels[level].n_latent]) for level in range(len(model.levels))]
         prior = [np.zeros([batch_shape[0], n_iterations+1, 2, model.levels[level].n_latent]) for level in range(len(model.levels))]
 
-    # initialize the model
+    # initialize the model from the prior
+    model.decode(generate=True)
     model.reset_state()
-    model.decode()
     elbo, cond_log_like, kl = model.losses(batch)
 
     total_elbo[:, 0] = elbo.data.cpu().numpy()[0]

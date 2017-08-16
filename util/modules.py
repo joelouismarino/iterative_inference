@@ -8,6 +8,7 @@ from distributions import DiagonalGaussian
 # todo: add inverse auto-regressive flow to GaussianVariable
 # todo: get conv modules working
 # todo: figure out why dropout causes the network to blow up
+# todo: reset state from the prior
 
 
 class Dense(nn.Module):
@@ -335,11 +336,17 @@ class DenseGaussianVariable(object):
         self.reset_mean()
         self.reset_log_var()
 
-    def reset_mean(self):
-        self.posterior.reset_mean()
+    def reset_mean(self, from_prior=True):
+        value = None
+        if from_prior:
+            value = self.prior.mean.data
+        self.posterior.reset_mean(value)
 
-    def reset_log_var(self):
-        self.posterior.reset_log_var()
+    def reset_log_var(self, from_prior=True):
+        value = None
+        if from_prior:
+            value = self.prior.log_var.data
+        self.posterior.reset_log_var(value)
 
     def trainable_mean(self):
         self.posterior.mean_trainable()
@@ -507,7 +514,7 @@ class ConvGaussianVariable(object):
 class DenseLatentLevel(object):
 
     def __init__(self, batch_size, encoder_arch, decoder_arch, n_latent, n_det, encoding_form, const_prior_var,
-                 variable_update_form):
+                 variable_update_form, learn_prior=True):
 
         self.batch_size = batch_size
         self.n_latent = n_latent
@@ -519,7 +526,7 @@ class DenseLatentLevel(object):
         variable_input_sizes = (encoder_arch['n_units'], decoder_arch['n_units'])
 
         self.latent = DenseGaussianVariable(self.batch_size, self.n_latent, const_prior_var, variable_input_sizes,
-                                            variable_update_form)
+                                            variable_update_form, learn_prior)
         self.deterministic_encoder = Dense(variable_input_sizes[0], n_det[0]) if n_det[0] > 0 else None
         self.deterministic_decoder = Dense(variable_input_sizes[1], n_det[1]) if n_det[1] > 0 else None
 
@@ -607,4 +614,12 @@ class DenseLatentLevel(object):
 
 
 class ConvLatentLevel(object):
+    pass
+
+
+class DynamicalDenseLatentLevel(object):
+    pass
+
+
+class DynamicalConvLatentLevel(object):
     pass
