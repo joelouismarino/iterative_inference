@@ -12,7 +12,7 @@ import time
 #           - latent traversal of lowest variance dimensions
 #           - plot number of 'dead' units or active units
 # todo: better data preprocessing (normalization, etc.)
-# todo: implement proper evaluation
+# todo: figure out why it is using gpu 0
 
 
 log_root = '/home/joe/Research/iterative_inference_logs/'
@@ -43,10 +43,12 @@ for epoch in range(1000):
     print 'Time: ' + str(toc - tic)
     # validation
     visualize = False
+    eval = False
     #if epoch % 100 == 0:
     #    visualize = True
+    #    eval = True
     model.eval()
-    _, averages, _ = run(model, train_config, val_loader, epoch+1, handle_dict, vis=visualize, label_names=label_names)
+    _, averages, _ = run(model, train_config, val_loader, epoch+1, handle_dict, vis=visualize, eval=eval, label_names=label_names)
     save_env()
     #enc_sched.step(-averages[0])
     #dec_sched.step(-averages[0])

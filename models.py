@@ -306,8 +306,15 @@ class LatentVariableModel(object):
             else:
                 self.log_var_output.train()
 
-    def random_re_init(self, re_init=0.1):
-        pass
+    def random_re_init(self, re_init_fraction=0.05):
+        """Randomly re-initializes a fraction of all of the weights in the model."""
+        for level in self.levels:
+            level.random_re_init(re_init_fraction)
+        self.output_decoder.random_re_init(re_init_fraction)
+        self.mean_output.random_re_init(re_init_fraction)
+        if output_distribution == 'gaussian':
+            if not self.constant_variances:
+                self.log_var_output.random_re_init(re_init_fraction)
 
     def cuda(self, device_id=0):
         """Places the model on the GPU."""

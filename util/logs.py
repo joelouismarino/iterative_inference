@@ -57,8 +57,8 @@ def log_vis(func):
     """Wrapper to log metrics and visualizations."""
     global log_path
 
-    def log_func(model, train_config, data_loader, epoch, vis=True):
-        output = func(model, train_config, data_loader, vis=vis)
+    def log_func(model, train_config, data_loader, epoch, vis=False, eval=False):
+        output = func(model, train_config, data_loader, vis=vis, eval=eval)
         total_elbo, total_cond_log_like, total_kl, total_labels, total_recon, total_posterior, total_prior, samples = output
         update_metric(os.path.join(log_path, 'metrics', 'val_elbo.p'), (epoch, np.mean(total_elbo[:, -1], axis=0)))
         update_metric(os.path.join(log_path, 'metrics', 'val_cond_log_like.p'), (epoch, np.mean(total_cond_log_like[:, -1], axis=0)))

@@ -2,13 +2,10 @@ import torch
 import torch.nn as nn
 from torch.nn import init
 from torch.autograd import Variable
-
-from distributions import DiagonalGaussian
+from distributions import DiagonalGaussian, PointEstimate
 
 # todo: add inverse auto-regressive flow to GaussianVariable
 # todo: get conv modules working
-# todo: figure out why dropout causes the network to blow up
-# todo: reset state from the prior
 
 
 class Dense(nn.Module):
@@ -70,6 +67,9 @@ class Dense(nn.Module):
             init.constant(self.bn.bias, 0.)
 
         init.constant(self.linear.bias, 0.)
+
+    def random_re_init(self, re_init_fraction):
+        pass
 
     def forward(self, input):
         output = self.linear(input)
@@ -184,6 +184,13 @@ class MultiLayerPerceptron(nn.Module):
             output_size = n_in
 
         self.n_out = output_size
+
+    def random_re_init(self, re_init_fraction):
+        for layer in self.layers:
+            layer.random_re_init(re_init_fraction)
+        if self.connection_type == 'highway':
+            for gate in self.gates:
+                gate.random_re_init(re_init_fraction)
 
     def forward(self, input):
 
@@ -320,7 +327,7 @@ class DenseGaussianVariable(object):
             self.prior.mean = self.prior_mean(input)
             if self.prior_log_var is not None:
                 self.prior.log_var = self.prior_log_var(input)
-        sample = self.prior.sample(resample=True) if generate else self.posterior.sample()
+        sample = self.prior.sample(resample=True) if generate else self.posterior.sample(resample=True)
         return sample
 
     def error(self):
@@ -332,9 +339,9 @@ class DenseGaussianVariable(object):
     def kl_divergence(self):
         return self.posterior.log_prob(self.posterior.sample()) - self.prior.log_prob(self.posterior.sample())
 
-    def reset(self):
-        self.reset_mean()
-        self.reset_log_var()
+    def reset(self, from_prior=True):
+        self.reset_mean(from_prior)
+        self.reset_log_var(from_prior)
 
     def reset_mean(self, from_prior=True):
         value = None
@@ -563,8 +570,8 @@ class DenseLatentLevel(object):
     def kl_divergence(self):
         return self.latent.kl_divergence()
 
-    def reset(self):
-        self.latent.reset()
+    def reset(self, from_prior=True):
+        self.latent.reset(from_prior)
 
     def trainable_state(self):
         self.latent.trainable_mean()

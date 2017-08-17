@@ -43,7 +43,6 @@ def train_on_batch(model, batch, n_iterations, optimizers):
     return elbo, cond_log_like, kl
 
 
-# todo: add importance sampling
 def run_on_batch(model, batch, n_iterations, vis=False):
     """Runs the model on a single batch. If visualizing, stores posteriors, priors, and output distributions."""
 
@@ -64,10 +63,10 @@ def run_on_batch(model, batch, n_iterations, vis=False):
     model.reset_state()
     elbo, cond_log_like, kl = model.losses(batch)
 
-    total_elbo[:, 0] = elbo.data.cpu().numpy()[0]
-    total_cond_log_like[:, 0] = cond_log_like.data.cpu().numpy()[0]
+    total_elbo[:, 0] = elbo.data.cpu().numpy()
+    total_cond_log_like[:, 0] = cond_log_like.data.cpu().numpy()
     for level in range(len(kl)):
-        total_kl[level][:, 0] = kl[level].data.cpu().numpy()[0]
+        total_kl[level][:, 0] = kl[level].data.cpu().numpy()
 
     if vis:
         reconstructions[:, 0] = model.output_dist.mean.data.cpu().numpy().reshape(batch_shape)
@@ -82,10 +81,10 @@ def run_on_batch(model, batch, n_iterations, vis=False):
         model.encode(batch)
         model.decode()
         elbo, cond_log_like, kl = model.losses(batch)
-        total_elbo[:, i] = elbo.data.cpu().numpy()[0]
-        total_cond_log_like[:, i] = cond_log_like.data.cpu().numpy()[0]
+        total_elbo[:, i] = elbo.data.cpu().numpy()
+        total_cond_log_like[:, i] = cond_log_like.data.cpu().numpy()
         for level in range(len(kl)):
-            total_kl[level][:, i] = kl[level].data.cpu().numpy()[0]
+            total_kl[level][:, i] = kl[level].data.cpu().numpy()
         if vis:
             reconstructions[:, i] = model.output_dist.mean.data.cpu().numpy().reshape(batch_shape)
             for level in range(len(model.levels)):
@@ -97,9 +96,24 @@ def run_on_batch(model, batch, n_iterations, vis=False):
     return total_elbo, total_cond_log_like, total_kl, reconstructions, posterior, prior
 
 
+def eval_on_batch(model, batch, n_importance_samples):
+    """Estimates marginal log likelihood of data using importance sampling."""
+    importance_sample_estimate = np.zeros((batch.size()[0], n_importance_samples))
+
+    for i in range(n_importance_samples):
+        model.decode()
+        elbo, cond_log_like, kl = model.losses(batch)
+        importance_sample_estimate[:, i] = torch.exp(cond_log_like).data.cpu().numpy()
+        for level in range(len(model.levels)):
+            importance_weight = torch.exp(-model.levels[level].kl_divergence().sum(dim=1))
+            importance_sample_estimate[:, i:i + 1] *= importance_weight.data.cpu().numpy().reshape((-1, 1))
+
+    return np.log(np.mean(importance_sample_estimate, axis=1))
+
+
 @plot_model_vis
 @log_vis
-def run(model, train_config, data_loader, vis=False):
+def run(model, train_config, data_loader, vis=False, eval=False):
     """Runs the model on a set of data."""
 
     batch_size = train_config['batch_size']
@@ -110,9 +124,8 @@ def run(model, train_config, data_loader, vis=False):
     total_elbo = np.zeros((n_examples, n_iterations+1))
     total_cond_log_like = np.zeros((n_examples, n_iterations+1))
     total_kl = [np.zeros((n_examples, n_iterations+1)) for _ in range(len(model.levels))]
-
+    total_log_like = np.zeros(n_examples) if eval else None
     total_labels = np.zeros(n_examples)
-
     total_recon = total_posterior = total_prior = None
     if vis:
         total_recon = np.zeros([n_examples, n_iterations + 1] + data_shape)
@@ -143,12 +156,15 @@ def run(model, train_config, data_loader, vis=False):
                 total_posterior[level][data_index:data_index + batch_size] = posterior[level]
                 total_prior[level][data_index:data_index + batch_size] = prior[level]
 
+        if eval:
+            total_log_like[data_index:data_index + batch_size] = eval_on_batch(model, batch, 5000)
+
     samples = None
     if vis:
         # visualize samples from the model
         samples = model.decode(generate=True).mean.data.cpu().numpy().reshape([batch_size]+data_shape)
 
-    return total_elbo, total_cond_log_like, total_kl, total_labels, total_recon, total_posterior, total_prior, samples
+    return total_elbo, total_cond_log_like, total_kl, total_log_like, total_labels, total_recon, total_posterior, total_prior, samples
 
 
 @plot_train
