@@ -9,14 +9,31 @@ from scipy.io import loadmat
 
 from load_torch_data import load_torch_data
 
-# todo: add label names to omniglot, imagenet
-# todo: add labels to static binarized MNIST, imagenet, omniglot
+# todo: add label names to omniglot
+# todo: add labels to static binarized MNIST, omniglot
 
 
 @load_torch_data
 def load_data(dataset, data_path):
 
-    """Loads and downloads a variety of benchmark image datasets."""
+    """
+    Downloads and loads a variety of benchmark image datasets.
+    Note that some datasets do not have labels and label names.
+
+    # Arguments
+        dataset: a string from one of the datasets supported below
+        data_path: a path string to the location of the datasets
+
+    # Returns
+        (train, val): for small datasets, these are data tensors of
+                      size  N x H x W x C. for larger datasets, these
+                      are paths to the image directories
+        (train_labels, val_labels): lists of label indices for the images.
+                                    note that some datasets do not have labels.
+        label_names: lists of (human readable) string names for the
+                     label indices. note that some datasets do not have
+                     label names.
+    """
 
     assert os.path.exists(data_path), 'Data path not found. Please specify a valid path.'
 
@@ -216,6 +233,13 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'imagenet_32'))
             tar.close()
             os.remove(os.path.join(data_path, 'imagenet_32', 'train_32x32.tar'))
+            print 'Moving images into directory...'
+            os.makedirs(os.path.join(data_path, 'imagenet_32', 'train_32x32', 'images'))
+            for _, _, files in os.walk(os.path.join(data_path, 'imagenet_32', 'train_32x32')):
+                root = os.path.join(data_path, 'imagenet_32', 'train_32x32')
+                for f in files:
+                    if os.path.exists(os.path.join(root, f)):
+                        os.rename(os.path.join(root, f), os.path.join(root, 'images', f))
         train = os.path.join(data_path, 'imagenet_32', 'train_32x32')
 
         if not os.path.exists(os.path.join(data_path, 'imagenet_32', 'valid_32x32')):
@@ -226,6 +250,13 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'imagenet_32'))
             tar.close()
             os.remove(os.path.join(data_path, 'imagenet_32', 'valid_32x32.tar'))
+            print 'Moving images into directory...'
+            os.makedirs(os.path.join(data_path, 'imagenet_32', 'valid_32x32', 'images'))
+            for _, _, files in os.walk(os.path.join(data_path, 'imagenet_32', 'valid_32x32')):
+                root = os.path.join(data_path, 'imagenet_32', 'valid_32x32')
+                for f in files:
+                    if os.path.exists(os.path.join(root, f)):
+                        os.rename(os.path.join(root, f), os.path.join(root, 'images', f))
         val = os.path.join(data_path, 'imagenet_32', 'valid_32x32')
 
     elif dataset == 'imagenet_64':
@@ -239,6 +270,13 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'imagenet_64'))
             tar.close()
             os.remove(os.path.join(data_path, 'imagenet_64', 'train_64x64.tar'))
+            print 'Moving images into directory...'
+            os.makedirs(os.path.join(data_path, 'imagenet_64', 'train_64x64', 'images'))
+            for _, _, files in os.walk(os.path.join(data_path, 'imagenet_64', 'train_64x64')):
+                root = os.path.join(data_path, 'imagenet_64', 'train_64x64')
+                for f in files:
+                    if os.path.exists(os.path.join(root, f)):
+                        os.rename(os.path.join(root, f), os.path.join(root, 'images', f))
         train = os.path.join(data_path, 'imagenet_64', 'train_64x64')
 
         if not os.path.exists(os.path.join(data_path, 'imagenet_64', 'valid_64x64')):
@@ -249,6 +287,13 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'imagenet_64'))
             tar.close()
             os.remove(os.path.join(data_path, 'imagenet_64', 'valid_64x64.tar'))
+            print 'Moving images into directory...'
+            os.makedirs(os.path.join(data_path, 'imagenet_64', 'valid_64x64', 'images'))
+            for _, _, files in os.walk(os.path.join(data_path, 'imagenet_64', 'valid_64x64')):
+                root = os.path.join(data_path, 'imagenet_64', 'valid_64x64')
+                for f in files:
+                    if os.path.exists(os.path.join(root, f)):
+                        os.rename(os.path.join(root, f), os.path.join(root, 'images', f))
         val = os.path.join(data_path, 'imagenet_64', 'valid_64x64')
 
     else:

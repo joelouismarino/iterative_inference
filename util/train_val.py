@@ -31,6 +31,10 @@ def train_on_batch(model, batch, n_iterations, optimizers):
     elbo, cond_log_like, kl = model.losses(batch, averaged=True)
     (-elbo).backward()
 
+    # divide encoder gradients
+    for param in model.encoder_parameters():
+        param.grad /= n_iterations
+
     # update parameters
     enc_opt.step()
     dec_opt.step()

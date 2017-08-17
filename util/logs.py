@@ -59,7 +59,7 @@ def log_vis(func):
 
     def log_func(model, train_config, data_loader, epoch, vis=False, eval=False):
         output = func(model, train_config, data_loader, vis=vis, eval=eval)
-        total_elbo, total_cond_log_like, total_kl, total_labels, total_recon, total_posterior, total_prior, samples = output
+        total_elbo, total_cond_log_like, total_kl, total_log_like, total_labels, total_recon, total_posterior, total_prior, samples = output
         update_metric(os.path.join(log_path, 'metrics', 'val_elbo.p'), (epoch, np.mean(total_elbo[:, -1], axis=0)))
         update_metric(os.path.join(log_path, 'metrics', 'val_cond_log_like.p'), (epoch, np.mean(total_cond_log_like[:, -1], axis=0)))
         for level in range(len(model.levels)):
@@ -83,6 +83,10 @@ def log_vis(func):
 
             samples = samples.reshape([batch_size]+data_shape)
             pickle.dump(samples, open(os.path.join(epoch_path, 'samples.p'), 'w'))
+
+        if eval:
+            pass
+            # todo: save log likelihood estimate
 
         return output
 

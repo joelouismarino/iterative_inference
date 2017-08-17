@@ -11,7 +11,7 @@ def get_optimizers(train_config, model):
         enc_opt, dec_opt = load_opt_checkpoint()
     else:
         encoder_params = model.encoder_parameters()
-        enc_opt = opt.Adam(encoder_params, lr=train_config['encoder_learning_rate'] / train_config['n_iterations'])
+        enc_opt = opt.Adam(encoder_params, lr=train_config['encoder_learning_rate'])
 
         decoder_params = model.decoder_parameters()
         dec_opt = opt.Adam(decoder_params, lr=train_config['decoder_learning_rate'])

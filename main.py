@@ -7,7 +7,7 @@ from util.plotting import init_plot, save_env
 from util.logs import init_log, save_checkpoint
 import time
 
-# todo: better visualization
+# todo: visualization
 #           - visualize errors at input level and reconstructions over inference iterations
 #           - latent traversal of lowest variance dimensions
 #           - plot number of 'dead' units or active units

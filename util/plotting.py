@@ -222,6 +222,16 @@ def plot_errors_over_iterations(total_recon, data, epoch):
     pass
 
 
+def plot_latent_covariance_martrix(posterior_mean, epoch, level):
+    """Plot the posterior covariance matrix for each latent level."""
+    global vis
+    # flatten and center posterior mean, compute covariance matrix, plot
+    posterior_mean = posterior_mean.reshape((-1, np.prod(posterior_mean.shape[1:])))
+    posterior_mean_centered = posterior_mean - np.mean(posterior_mean, axis=0)
+    covariance = np.dot(posterior_mean_centered.T, posterior_mean_centered) / posterior_mean_centered.shape[0]
+    vis.heatmap(covariance, opts=dict(title='Posterior Covariance, Epoch ' + str(epoch) + ', Level ' + str(level)))
+
+
 def plot_train(func):
     """Wrapper around training function to plot the outputs in corresponding visdom windows."""
     def plotting_func(model, train_config, data_loader, epoch, handle_dict, optimizers):
@@ -264,10 +274,13 @@ def plot_model_vis(func):
             plot_images(total_recon[:batch_size, 1].reshape([batch_size]+data_shape), caption='Reconstructions, Epoch ' + str(epoch))
             plot_images(samples.reshape([batch_size]+data_shape), caption='Samples, Epoch ' + str(epoch))
 
-            # plot t-sne for each level's posterior
-            for level in range(len(model.levels)):
+            # plot t-sne for each level's posterior (at first inference iteration)
+            for level in range(len(total_posterior)):
                 plot_tsne(total_posterior[level][:, 1, 0], 1 + total_labels, title='T-SNE Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level), legend=label_names)
 
+            # plot the covariance matrix for each level's posterior (at first inference iteration)
+            for level in range(len(total_posterior)):
+                plot_latent_covariance_martrix(total_posterior[level][:, 1, 0], epoch, level)
 
             if train_config['n_iterations'] > 1:
                 # plot ELBO, reconstruction loss, KL divergence over inference iterations
