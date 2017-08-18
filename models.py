@@ -162,7 +162,8 @@ class LatentVariableModel(object):
             if self.output_distribution == 'gaussian':
                 norm_error = error / torch.exp(self.output_dist.log_var.detach())
             elif self.output_distribution == 'bernoulli':
-                norm_error = None
+                mean = self.output_dist.mean.detach()
+                norm_error = error * torch.exp(- torch.log(mean + 1e-5) - torch.log(1 - mean + 1e-5))
             encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), dim=1)
         return encoding
 

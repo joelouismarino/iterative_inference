@@ -179,7 +179,7 @@ def plot_average_improvement(metrics, epoch, handle_dict):
     cond_log_like_improvement = 100. * np.mean(np.divide(total_cond_log_like[:, 1] - total_cond_log_like[:, -1], total_cond_log_like[:, 1]), axis=0)
     update_trace(np.array([cond_log_like_improvement]), np.array([epoch]).astype(int), win=handle_dict['recon_improvement'], name='log P(x | z)')
     for level in range(len(total_kl)):
-        kl_improvement = 100. * np.mean(np.divide(total_kl[level][:, 1] - total_kl[level][:, -1], total_kl[level][:, 1]), axis=0)
+        kl_improvement = 100. * np.mean(np.divide(total_kl[level][:, 1] - total_kl[level][:, -1], total_kl[level][:, 1] + 1e-5), axis=0)
         update_trace(np.array([kl_improvement]), np.array([epoch]).astype(int), win=handle_dict['kl_improvement'], name='Level ' + str(level))
 
 
@@ -275,8 +275,8 @@ def plot_model_vis(func):
             plot_images(samples.reshape([batch_size]+data_shape), caption='Samples, Epoch ' + str(epoch))
 
             # plot t-sne for each level's posterior (at first inference iteration)
-            for level in range(len(total_posterior)):
-                plot_tsne(total_posterior[level][:, 1, 0], 1 + total_labels, title='T-SNE Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level), legend=label_names)
+            #for level in range(len(total_posterior)):
+            #    plot_tsne(total_posterior[level][:, 1, 0], 1 + total_labels, title='T-SNE Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level), legend=label_names)
 
             # plot the covariance matrix for each level's posterior (at first inference iteration)
             for level in range(len(total_posterior)):

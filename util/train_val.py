@@ -195,5 +195,8 @@ def train(model, train_config, data_loader, optimizers):
         for l in range(len(avg_kl)):
             avg_kl[l].append(kl[l])
 
+    if np.isnan(np.sum(avg_elbo)):
+        raise Exception('Nan encountered during training.')
+
     return np.mean(avg_elbo), np.mean(avg_cond_log_like), [np.mean(avg_kl[l]) for l in range(len(model.levels))]
 
