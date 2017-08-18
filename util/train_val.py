@@ -35,6 +35,24 @@ def train_on_batch(model, batch, n_iterations, optimizers):
     for param in model.encoder_parameters():
         param.grad /= n_iterations
 
+    # calculate average gradient magnitudes
+    def ave_grad_mag(params):
+        grad_mag = 0.
+        num_params = 1
+        for param in params:
+            if param.grad is not None:
+                grad_mag += param.grad.abs().sum().data.cpu().numpy()[0]
+                num_params += param.grad.view(-1).size()[0]
+        return grad_mag / num_params
+
+    grad_mags = np.zeros((len(model.levels)+1, 2))
+    for level_num, level in enumerate(model.levels):
+        encoder_grad_mag = ave_grad_mag(level.encoder_parameters())
+        decoder_grad_mag = ave_grad_mag(level.decoder_parameters())
+        grad_mags[level_num, :] = np.array([encoder_grad_mag, decoder_grad_mag])
+    output_decoder_grad_mag = ave_grad_mag(model.output_decoder.parameters())
+    grad_mags[-1, :] = np.array([0., output_decoder_grad_mag])
+
     # update parameters
     enc_opt.step()
     dec_opt.step()
@@ -44,7 +62,7 @@ def train_on_batch(model, batch, n_iterations, optimizers):
     for level in range(len(kl)):
         kl[level] = kl[level].data.cpu().numpy()[0]
 
-    return elbo, cond_log_like, kl
+    return elbo, cond_log_like, kl, grad_mags
 
 
 def run_on_batch(model, batch, n_iterations, vis=False):
@@ -178,6 +196,7 @@ def train(model, train_config, data_loader, optimizers):
     avg_elbo = []
     avg_cond_log_like = []
     avg_kl = [[] for _ in range(len(model.levels))]
+    avg_grad_mags = np.zeros((len(model.levels) + 1, 2))
 
     for batch, _ in data_loader:
         if train_config['cuda_device'] is not None:
@@ -188,15 +207,15 @@ def train(model, train_config, data_loader, optimizers):
         if model.output_distribution == 'bernoulli':
             batch = torch.bernoulli(batch / 255.)
 
-        elbo, cond_log_like, kl = train_on_batch(model, batch, train_config['n_iterations'], optimizers)
+        elbo, cond_log_like, kl, grad_mags = train_on_batch(model, batch, train_config['n_iterations'], optimizers)
 
         avg_elbo.append(elbo)
         avg_cond_log_like.append(cond_log_like)
         for l in range(len(avg_kl)):
             avg_kl[l].append(kl[l])
+        avg_grad_mags += grad_mags
 
     if np.isnan(np.sum(avg_elbo)):
         raise Exception('Nan encountered during training.')
 
-    return np.mean(avg_elbo), np.mean(avg_cond_log_like), [np.mean(avg_kl[l]) for l in range(len(model.levels))]
-
+    return np.mean(avg_elbo), np.mean(avg_cond_log_like), [np.mean(avg_kl[l]) for l in range(len(model.levels))], avg_grad_mags/len(iter(data_loader))

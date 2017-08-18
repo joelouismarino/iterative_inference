@@ -37,9 +37,17 @@ def initialize_plots(train_config, arch):
 
     lr_handle = plot_line(nans, np.ones((1, 2)), legend=['Encoder', 'Decoder'], title='Learning Rates', xlabel='Epochs', ylabel='Learning Rate', xformat='log', yformat='log')
 
-    #inactive_units_handle = plot_line()
+    # plot for average gradient magnitudes
+    grad_mag_legend=[]
+    for name in ['Encoder', 'Decoder']:
+        for level in range(len(arch['n_latent'])):
+            grad_mag_legend.append(name + ', Level ' + str(level))
+    grad_mag_legend.append('Decoder, Output')
+    nans = np.zeros((1, 2 * len(arch['n_latent']) + 1))
+    nans.fill(np.nan)
+    grad_mag_handle = plot_line(nans, np.ones((1, 2 * len(arch['n_latent']) + 1)), legend=grad_mag_legend, title='Average Gradient Magnitudes', xlabel='Epochs', ylabel='Gradient Magnitude', xformat='log')
 
-    handle_dict = dict(elbo=elbo_handle, cond_log_like=cond_log_like_handle, kl=kl_handle, lr=lr_handle)
+    handle_dict = dict(elbo=elbo_handle, cond_log_like=cond_log_like_handle, kl=kl_handle, lr=lr_handle, grad_mags=grad_mag_handle)
 
     if train_config['n_iterations'] > 1:
         # plot of average improvement over iterations on validation set
@@ -171,6 +179,16 @@ def plot_average_metrics(metrics, epoch, handle_dict, train_val):
         update_trace(np.array([avg_kl[level]]), np.array([epoch]).astype(int), win=handle_dict['kl'], name=train_val + ', Level ' + str(level))
 
 
+def plot_grad_mags(grad_mags, epoch, handle_dict):
+    """Plots the gradient magnitudes for each level, encoder/decoder."""
+    for level in range(len(grad_mags[:-1])):
+        encoder_grad_mag, decoder_grad_mag = grad_mags[level]
+        update_trace(np.array([encoder_grad_mag]), np.array([epoch]).astype(int), win=handle_dict['grad_mags'], name='Encoder, Level ' + str(level))
+        update_trace(np.array([decoder_grad_mag]), np.array([epoch]).astype(int), win=handle_dict['grad_mags'], name='Decoder, Level ' + str(level))
+    output_decoder_grad_mag = grad_mags[-1][1]
+    update_trace(np.array([output_decoder_grad_mag]), np.array([epoch]).astype(int), win=handle_dict['grad_mags'], name='Decoder, Output')
+
+
 def plot_average_improvement(metrics, epoch, handle_dict):
     """Plots the average improvement on the metrics for the validation set."""
     total_elbo, total_cond_log_like, total_kl = metrics
@@ -199,7 +217,7 @@ def plot_metrics_over_iterations(metrics, epoch):
                        title='Average Metrics During Inference Iterations, Epoch ' + str(epoch),
                        xlabel='Inference Iterations', ylabel='Metrics (Nats)')
 
-    iterations = np.arange(0, total_elbo.shape[1] + 1).astype(int)
+    iterations = np.arange(0, total_elbo.shape[1]).astype(int)
 
     ave_elbo = np.mean(total_elbo, axis=0)
     update_trace(ave_elbo, iterations, win=handle, name='ELBO')
@@ -236,7 +254,8 @@ def plot_train(func):
     """Wrapper around training function to plot the outputs in corresponding visdom windows."""
     def plotting_func(model, train_config, data_loader, epoch, handle_dict, optimizers):
         output = func(model, train_config, data_loader, epoch, optimizers)
-        plot_average_metrics(output, epoch, handle_dict, 'Train')
+        plot_average_metrics(output[:-1], epoch, handle_dict, 'Train')
+        plot_grad_mags(output[-1], epoch, handle_dict)
         if optimizers[0] is not None:
             update_trace(np.array([optimizers[0].param_groups[0]['lr']]), np.array([epoch]).astype(int), win=handle_dict['lr'], name='Encoder')
         if optimizers[1] is not None:
@@ -259,8 +278,6 @@ def plot_model_vis(func):
             average_kl[level] = np.mean(total_kl[level][:, -1], axis=0)
         averages = average_elbo, average_cond_log_like, average_kl
         plot_average_metrics(averages, epoch, handle_dict, 'Validation')
-
-        # plot number of inactive units
 
         # plot average improvement on metrics over iterations
         if train_config['n_iterations'] > 1:

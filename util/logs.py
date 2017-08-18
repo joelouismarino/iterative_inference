@@ -43,7 +43,7 @@ def log_train(func):
 
     def log_func(model, train_config, data, epoch, optimizers):
         output = func(model, train_config, data, optimizers)
-        avg_elbo, avg_cond_log_like, avg_kl = output
+        avg_elbo, avg_cond_log_like, avg_kl, avg_grad_mags = output
         update_metric(os.path.join(log_path, 'metrics', 'train_elbo.p'), (epoch, avg_elbo))
         update_metric(os.path.join(log_path, 'metrics', 'train_cond_log_like.p'), (epoch, avg_cond_log_like))
         for level in range(len(model.levels)):
