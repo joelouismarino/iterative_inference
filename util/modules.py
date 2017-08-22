@@ -148,6 +148,17 @@ class Conv(nn.Module):
         return output
 
 
+class DenseInverseAutoRegressive(nn.Module):
+
+    def __init__(self, n):
+        super(DenseInverseAutoRegressive, self).__init__()
+        self.mean = Dense(n, n)
+        self.std = Dense(n, n)
+
+    def forward(self, input):
+        return (input - self.mean(input)) / self.std(input)
+
+
 class MultiLayerPerceptron(nn.Module):
 
     """Multi-layered perceptron."""

@@ -11,8 +11,9 @@ import time
 #           - visualize errors at input level and reconstructions over inference iterations
 #           - latent traversal of lowest variance dimensions
 #           - plot number of 'dead' units or active units
-# todo: better data preprocessing (normalization, etc.)
 # todo: figure out why it is using gpu 0
+# todo: get convolutional model working
+# todo: add IAF
 
 
 log_root = '/home/joe/Research/iterative_inference_logs/'
@@ -31,7 +32,7 @@ train_loader, val_loader, label_names = load_data(train_config['dataset'], data_
 model = get_model(train_config, arch, tuple(next(iter(train_loader))[0].size()[1:]))
 
 # get optimizers
-(enc_opt, enc_sched), (dec_opt, dec_sched) = get_optimizers(train_config, model)
+(enc_opt, enc_scheduler), (dec_opt, dec_scheduler) = get_optimizers(train_config, model)
 
 for epoch in range(1000):
     print 'Epoch: ' + str(epoch+1)
@@ -44,13 +45,13 @@ for epoch in range(1000):
     # validation
     visualize = False
     eval = False
-    #if epoch % 100 == 0:
-    #    visualize = True
+    if epoch % train_config['display_iter'] == train_config['display_iter']-1:
+        save_checkpoint(model, (enc_opt, dec_opt), epoch)
+        visualize = True
     #    eval = True
     model.eval()
     _, averages, _ = run(model, train_config, val_loader, epoch+1, handle_dict, vis=visualize, eval=eval, label_names=label_names)
     save_env()
-    #enc_sched.step(-averages[0])
-    #dec_sched.step(-averages[0])
-    if epoch % 100 == 0:
-        save_checkpoint(model, (enc_opt, dec_opt), epoch)
+    # enc_scheduler.step(-averages[0])
+    # dec_scheduler.step(-averages[0])
+

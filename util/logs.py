@@ -78,7 +78,7 @@ def log_vis(func):
             for level in range(len(model.levels)):
                 pickle.dump(total_kl[level][:batch_size], open(os.path.join(epoch_path, 'kl_level_' + str(level) + '.p'), 'w'))
 
-            recon = total_recon[:batch_size].reshape([batch_size, n_iterations+1]+data_shape)
+            recon = total_recon[:batch_size, :, 0].reshape([batch_size, n_iterations+1]+data_shape)
             pickle.dump(recon, open(os.path.join(epoch_path, 'reconstructions.p'), 'w'))
 
             samples = samples.reshape([batch_size]+data_shape)

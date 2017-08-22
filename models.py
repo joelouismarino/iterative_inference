@@ -96,10 +96,9 @@ class LatentVariableModel(object):
             self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity='sigmoid', weight_norm=arch['weight_norm_dec'])
         elif self.output_distribution == 'gaussian':
             self.output_dist = DiagonalGaussian(None, None)
-            self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, weight_norm=arch['weight_norm_dec'])
+            self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity='sigmoid', weight_norm=arch['weight_norm_dec'])
             if self.constant_variances:
                 self.trainable_log_var = Variable(torch.zeros(self.input_size), requires_grad=True)
-                self.log_var_output = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
             else:
                 self.log_var_output = Dense(arch['n_units_dec'][0], self.input_size, weight_norm=arch['weight_norm_dec'])
 
@@ -196,7 +195,7 @@ class LatentVariableModel(object):
 
         if self.output_distribution == 'gaussian':
             if self.constant_variances:
-                self.output_dist.log_var = self.log_var_output
+                self.output_dist.log_var = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
             else:
                 self.output_dist.log_var = self.log_var_output(h)
         return self.output_dist
@@ -215,7 +214,7 @@ class LatentVariableModel(object):
         """Returns the conditional likelihood."""
         if self._cuda_device is not None:
             input = input.cuda(self._cuda_device)
-        input = input.view(self.batch_size, self.input_size)
+        input = input.view(-1, self.input_size)
         if averaged:
             return self.output_dist.log_prob(sample=input).sum(1).mean(0)
         else:
@@ -290,9 +289,7 @@ class LatentVariableModel(object):
         self.output_decoder.eval()
         self.mean_output.eval()
         if self.output_distribution == 'gaussian':
-            if self.constant_variances:
-                self.trainable_log_var.eval()
-            else:
+            if not self.constant_variances:
                 self.log_var_output.eval()
 
     def train(self):
@@ -302,9 +299,7 @@ class LatentVariableModel(object):
         self.output_decoder.train()
         self.mean_output.train()
         if self.output_distribution == 'gaussian':
-            if self.constant_variances:
-                self.trainable_log_var.train()
-            else:
+            if not self.constant_variances:
                 self.log_var_output.train()
 
     def random_re_init(self, re_init_fraction=0.05):
@@ -327,7 +322,7 @@ class LatentVariableModel(object):
         self.output_dist.cuda(device_id)
         if self.output_distribution == 'gaussian':
             if self.constant_variances:
-                self.trainable_log_var = self.trainable_log_var.cuda(device_id)
+                self.trainable_log_var = Variable(self.trainable_log_var.data.cuda(device_id), requires_grad=True)
                 self.log_var_output = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
             else:
                 self.log_var_output = self.log_var_output.cuda(device_id)

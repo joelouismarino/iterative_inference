@@ -37,6 +37,10 @@ def initialize_plots(train_config, arch):
 
     lr_handle = plot_line(nans, np.ones((1, 2)), legend=['Encoder', 'Decoder'], title='Learning Rates', xlabel='Epochs', ylabel='Learning Rate', xformat='log', yformat='log')
 
+    output_log_var_handle = None
+    if train_config['output_distribution'] == 'gaussian':
+        output_log_var_handle = plot_line(np.array(np.nan).reshape(1), np.ones(1), legend=['Validation'], title='Average Output Log Variance', xlabel='Epochs', ylabel='Ave. Log Variance', xformat='log')
+
     # plot for average gradient magnitudes
     grad_mag_legend=[]
     for name in ['Encoder', 'Decoder']:
@@ -47,7 +51,7 @@ def initialize_plots(train_config, arch):
     nans.fill(np.nan)
     grad_mag_handle = plot_line(nans, np.ones((1, 2 * len(arch['n_latent']) + 1)), legend=grad_mag_legend, title='Average Gradient Magnitudes', xlabel='Epochs', ylabel='Gradient Magnitude', xformat='log')
 
-    handle_dict = dict(elbo=elbo_handle, cond_log_like=cond_log_like_handle, kl=kl_handle, lr=lr_handle, grad_mags=grad_mag_handle)
+    handle_dict = dict(elbo=elbo_handle, cond_log_like=cond_log_like_handle, kl=kl_handle, lr=lr_handle, grad_mags=grad_mag_handle, output_log_var=output_log_var_handle)
 
     if train_config['n_iterations'] > 1:
         # plot of average improvement over iterations on validation set
@@ -104,7 +108,7 @@ def plot_images(imgs, caption=''):
     if imgs.shape[-1] == 3 or imgs.shape[-1] == 1:
         imgs = imgs.transpose((0, 3, 1, 2))
     opts = dict(caption=caption)
-    win = vis.images(imgs, opts=opts)
+    win = vis.images(np.clip(255 * imgs, 0, 255), opts=opts)
     return win
 
 
@@ -250,6 +254,12 @@ def plot_latent_covariance_martrix(posterior_mean, epoch, level):
     vis.heatmap(covariance, opts=dict(title='Posterior Covariance, Epoch ' + str(epoch) + ', Level ' + str(level)))
 
 
+def plot_output_variance(recon, epoch, handle_dict):
+    global vis
+    ave_log_var = np.mean(recon[:, -1, 1])
+    update_trace(np.array([ave_log_var]), np.array([epoch]).astype(int), win=handle_dict['output_log_var'], name='Validation')
+
+
 def plot_train(func):
     """Wrapper around training function to plot the outputs in corresponding visdom windows."""
     def plotting_func(model, train_config, data_loader, epoch, handle_dict, optimizers):
@@ -288,8 +298,11 @@ def plot_model_vis(func):
             # plot reconstructions, samples
             batch_size = train_config['batch_size']
             data_shape = list(next(iter(data_loader))[0].size())[1:]
-            plot_images(total_recon[:batch_size, 1].reshape([batch_size]+data_shape), caption='Reconstructions, Epoch ' + str(epoch))
+            plot_images(total_recon[:batch_size, -1, 0].reshape([batch_size]+data_shape), caption='Reconstructions, Epoch ' + str(epoch))
             plot_images(samples.reshape([batch_size]+data_shape), caption='Samples, Epoch ' + str(epoch))
+
+            if model.output_distribution == 'gaussian':
+                plot_output_variance(total_recon, epoch, handle_dict)
 
             # plot t-sne for each level's posterior (at first inference iteration)
             #for level in range(len(total_posterior)):
