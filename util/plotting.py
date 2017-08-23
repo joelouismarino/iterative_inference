@@ -108,7 +108,7 @@ def plot_images(imgs, caption=''):
     if imgs.shape[-1] == 3 or imgs.shape[-1] == 1:
         imgs = imgs.transpose((0, 3, 1, 2))
     opts = dict(caption=caption)
-    win = vis.images(np.clip(255 * imgs, 0, 255), opts=opts)
+    win = vis.images(np.clip(imgs, 0, 255), opts=opts)
     return win
 
 
@@ -244,7 +244,7 @@ def plot_errors_over_iterations(total_recon, data, epoch):
     pass
 
 
-def plot_latent_covariance_martrix(posterior_mean, epoch, level):
+def plot_latent_covariance_matrix(posterior_mean, epoch, level):
     """Plot the posterior covariance matrix for each latent level."""
     global vis
     # flatten and center posterior mean, compute covariance matrix, plot
@@ -254,9 +254,9 @@ def plot_latent_covariance_martrix(posterior_mean, epoch, level):
     vis.heatmap(covariance, opts=dict(title='Posterior Covariance, Epoch ' + str(epoch) + ', Level ' + str(level)))
 
 
-def plot_output_variance(recon, epoch, handle_dict):
+def plot_output_variance(cond_like, epoch, handle_dict):
     global vis
-    ave_log_var = np.mean(recon[:, -1, 1])
+    ave_log_var = np.mean(cond_like[:, -1, 1])
     update_trace(np.array([ave_log_var]), np.array([epoch]).astype(int), win=handle_dict['output_log_var'], name='Validation')
 
 
@@ -278,7 +278,7 @@ def plot_model_vis(func):
     """Wrapper around run function to plot the outputs in corresponding visdom windows."""
     def plotting_func(model, train_config, data_loader, epoch, handle_dict, vis=False, eval=False, label_names=None):
         output = func(model, train_config, data_loader, epoch, vis=vis, eval=eval)
-        total_elbo, total_cond_log_like, total_kl, total_log_like, total_labels, total_recon, total_posterior, total_prior, samples = output
+        total_elbo, total_cond_log_like, total_kl, total_log_like, total_labels, total_cond_like, total_recon, total_posterior, total_prior, samples = output
 
         # plot average metrics on validation set
         average_elbo = np.mean(total_elbo[:, -1], axis=0)
@@ -293,16 +293,15 @@ def plot_model_vis(func):
         if train_config['n_iterations'] > 1:
             plot_average_improvement([total_elbo, total_cond_log_like, total_kl], epoch, handle_dict)
 
-
         if vis:
             # plot reconstructions, samples
             batch_size = train_config['batch_size']
             data_shape = list(next(iter(data_loader))[0].size())[1:]
-            plot_images(total_recon[:batch_size, -1, 0].reshape([batch_size]+data_shape), caption='Reconstructions, Epoch ' + str(epoch))
+            plot_images(total_recon[:batch_size, -1].reshape([batch_size]+data_shape), caption='Reconstructions, Epoch ' + str(epoch))
             plot_images(samples.reshape([batch_size]+data_shape), caption='Samples, Epoch ' + str(epoch))
 
             if model.output_distribution == 'gaussian':
-                plot_output_variance(total_recon, epoch, handle_dict)
+                plot_output_variance(total_cond_like, epoch, handle_dict)
 
             # plot t-sne for each level's posterior (at first inference iteration)
             #for level in range(len(total_posterior)):
@@ -310,7 +309,7 @@ def plot_model_vis(func):
 
             # plot the covariance matrix for each level's posterior (at first inference iteration)
             for level in range(len(total_posterior)):
-                plot_latent_covariance_martrix(total_posterior[level][:, 1, 0], epoch, level)
+                plot_latent_covariance_matrix(total_posterior[level][:, 1, 0], epoch, level)
 
             if train_config['n_iterations'] > 1:
                 # plot ELBO, reconstruction loss, KL divergence over inference iterations

@@ -7,7 +7,7 @@ train_config = {
     'encoder_learning_rate': 0.0002,
     'decoder_learning_rate': 0.0002,
     'kl_min': 0,
-    'cuda_device': 0,
+    'cuda_device': 1,
     'display_iter': 10,
     'resume_experiment': None
 }
@@ -15,10 +15,10 @@ train_config = {
 # model architecture
 arch = {
     'encoding_form': ['posterior'],
-    'concat_variables': False,
+    'concat_variables': True,
     'variable_update_form': 'direct',
-    'whiten_input': False,
-    'constant_prior_variances': False,
+    'whiten_input': True,
+    'constant_prior_variances': True,
     'learn_top_prior': False,
     'top_size': 25,
 

@@ -29,7 +29,7 @@ train_loader, val_loader, label_names = load_data(train_config['dataset'], data_
                                                   cuda_device=train_config['cuda_device'])
 
 # construct model
-model = get_model(train_config, arch, tuple(next(iter(train_loader))[0].size()[1:]))
+model = get_model(train_config, arch, train_loader)
 
 # get optimizers
 (enc_opt, enc_scheduler), (dec_opt, dec_scheduler) = get_optimizers(train_config, model)

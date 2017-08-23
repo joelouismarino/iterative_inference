@@ -73,10 +73,12 @@ def run_on_batch(model, batch, n_iterations, vis=False):
     total_cond_log_like = np.zeros((batch.size()[0], n_iterations+1))
     total_kl = [np.zeros((batch.size()[0], n_iterations+1)) for _ in range(len(model.levels))]
 
-    reconstructions = posterior = prior = None
+    cond_like = reconstructions = posterior = prior = None
     if vis:
-        # store the reconstructions, posterior, and prior over iterations for the entire batch
-        reconstructions = np.zeros([batch_shape[0], n_iterations+1, 2] + batch_shape[1:])
+        # store the cond_like, reconstructions, posterior, and prior over iterations for the entire batch
+        # note: cond_like is the network output, reconstructions are the images
+        cond_like = np.zeros([batch_shape[0], n_iterations+1, 2] + batch_shape[1:])
+        reconstructions = np.zeros([batch_shape[0], n_iterations+1] + batch_shape[1:])
         posterior = [np.zeros([batch_shape[0], n_iterations+1, 2, model.levels[level].n_latent]) for level in range(len(model.levels))]
         prior = [np.zeros([batch_shape[0], n_iterations+1, 2, model.levels[level].n_latent]) for level in range(len(model.levels))]
 
@@ -91,9 +93,10 @@ def run_on_batch(model, batch, n_iterations, vis=False):
         total_kl[level][:, 0] = kl[level].data.cpu().numpy()
 
     if vis:
-        reconstructions[:, 0, 0] = model.output_dist.mean.data.cpu().numpy().reshape(batch_shape)
+        cond_like[:, 0, 0] = model.output_dist.mean.data.cpu().numpy().reshape(batch_shape)
+        reconstructions[:, 0] = model.reconstruction.data.cpu().numpy().reshape(batch_shape)
         if model.output_distribution == 'gaussian':
-            reconstructions[:, 0, 1] = model.output_dist.log_var.data.cpu().numpy().reshape(batch_shape)
+            cond_like[:, 0, 1] = model.output_dist.log_var.data.cpu().numpy().reshape(batch_shape)
         for level in range(len(model.levels)):
             posterior[level][:, 0, 0, :] = model.levels[level].latent.posterior.mean.data.cpu().numpy()
             posterior[level][:, 0, 1, :] = model.levels[level].latent.posterior.log_var.data.cpu().numpy()
@@ -110,16 +113,17 @@ def run_on_batch(model, batch, n_iterations, vis=False):
         for level in range(len(kl)):
             total_kl[level][:, i] = kl[level].data.cpu().numpy()
         if vis:
-            reconstructions[:, i, 0] = model.output_dist.mean.data.cpu().numpy().reshape(batch_shape)
+            cond_like[:, 0, 0] = model.output_dist.mean.data.cpu().numpy().reshape(batch_shape)
+            reconstructions[:, i] = model.reconstruction.data.cpu().numpy().reshape(batch_shape)
             if model.output_distribution == 'gaussian':
-                reconstructions[:, i, 1] = model.output_dist.log_var.data.cpu().numpy().reshape(batch_shape)
+                cond_like[:, i, 1] = model.output_dist.log_var.data.cpu().numpy().reshape(batch_shape)
             for level in range(len(model.levels)):
                 posterior[level][:, i, 0, :] = model.levels[level].latent.posterior.mean.data.cpu().numpy()
                 posterior[level][:, i, 1, :] = model.levels[level].latent.posterior.log_var.data.cpu().numpy()
                 prior[level][:, i, 0, :] = model.levels[level].latent.prior.mean.data.cpu().numpy()
                 prior[level][:, i, 1, :] = model.levels[level].latent.prior.log_var.data.cpu().numpy()
 
-    return total_elbo, total_cond_log_like, total_kl, reconstructions, posterior, prior
+    return total_elbo, total_cond_log_like, total_kl, cond_like, reconstructions, posterior, prior
 
 
 def eval_on_batch(model, batch, n_importance_samples):
@@ -152,9 +156,10 @@ def run(model, train_config, data_loader, vis=False, eval=False):
     total_kl = [np.zeros((n_examples, n_iterations+1)) for _ in range(len(model.levels))]
     total_log_like = np.zeros(n_examples) if eval else None
     total_labels = np.zeros(n_examples)
-    total_recon = total_posterior = total_prior = None
+    total_cond_like = total_recon = total_posterior = total_prior = None
     if vis:
-        total_recon = np.zeros([n_examples, n_iterations + 1, 2] + data_shape)
+        total_cond_like = np.zeros([n_examples, n_iterations + 1, 2] + data_shape)
+        total_recon = np.zeros([n_examples, n_iterations + 1] + data_shape)
         total_posterior = [np.zeros([n_examples, n_iterations + 1, 2, model.levels[level].n_latent]) for level in range(len(model.levels))]
         total_prior = [np.zeros([n_examples, n_iterations + 1, 2, model.levels[level].n_latent]) for level in range(len(model.levels))]
 
@@ -163,11 +168,17 @@ def run(model, train_config, data_loader, vis=False, eval=False):
         if train_config['cuda_device'] is not None:
             batch = batch.cuda(train_config['cuda_device'])
 
-        batch = batch / 255.
         if model.output_distribution == 'bernoulli':
-            batch = torch.bernoulli(batch)
+            batch = 255. * torch.bernoulli(batch / 255.)
+        elif model.output_distribution == 'gaussian':
+            rand_values = torch.rand(tuple(batch.data.shape)) - 0.5
+            if train_config['cuda_device'] is not None:
+                rand_values = Variable(rand_values.cuda(train_config['cuda_device']))
+            else:
+                rand_values = Variable(rand_values)
+            batch = torch.clamp(batch + rand_values, 0., 255.)
 
-        elbo, cond_log_like, kl, recon, posterior, prior = run_on_batch(model, batch, n_iterations, vis)
+        elbo, cond_log_like, kl, cond_like, recon, posterior, prior = run_on_batch(model, batch, n_iterations, vis)
 
         data_index = batch_index * batch_size
         total_elbo[data_index:data_index + batch_size, :] = elbo
@@ -178,6 +189,7 @@ def run(model, train_config, data_loader, vis=False, eval=False):
         total_labels[data_index:data_index + batch_size] = labels.numpy()
 
         if vis:
+            total_cond_like[data_index:data_index + batch_size] = cond_like
             total_recon[data_index:data_index + batch_size] = recon
             for level in range(len(model.levels)):
                 total_posterior[level][data_index:data_index + batch_size] = posterior[level]
@@ -189,9 +201,10 @@ def run(model, train_config, data_loader, vis=False, eval=False):
     samples = None
     if vis:
         # visualize samples from the model
-        samples = model.decode(generate=True).mean.data.cpu().numpy().reshape([batch_size]+data_shape)
+        model.decode(generate=True)
+        samples = model.reconstruction.data.cpu().numpy().reshape([batch_size]+data_shape)
 
-    return total_elbo, total_cond_log_like, total_kl, total_log_like, total_labels, total_recon, total_posterior, total_prior, samples
+    return total_elbo, total_cond_log_like, total_kl, total_log_like, total_labels, total_cond_like, total_recon, total_posterior, total_prior, samples
 
 
 @plot_train
@@ -209,9 +222,15 @@ def train(model, train_config, data_loader, optimizers):
         else:
             batch = Variable(batch)
 
-        batch = batch / 255.
         if model.output_distribution == 'bernoulli':
-            batch = torch.bernoulli(batch)
+            batch = 255. * torch.bernoulli(batch / 255.)
+        elif model.output_distribution == 'gaussian':
+            rand_values = torch.rand(tuple(batch.data.shape)) - 0.5
+            if train_config['cuda_device'] is not None:
+                rand_values = Variable(rand_values.cuda(train_config['cuda_device']))
+            else:
+                rand_values = Variable(rand_values)
+            batch = torch.clamp(batch + rand_values, 0., 255.)
 
         elbo, cond_log_like, kl, grad_mags = train_on_batch(model, batch, train_config['n_iterations'], optimizers)
 

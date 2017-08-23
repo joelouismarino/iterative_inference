@@ -24,7 +24,7 @@ class Dense(nn.Module):
 
         init_gain = 1.
 
-        if non_linearity is None:
+        if non_linearity is None or non_linearity == 'linear':
             self.non_linearity = None
         elif non_linearity == 'relu':
             self.non_linearity = nn.ReLU()

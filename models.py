@@ -12,16 +12,16 @@ from util.modules import Dense, MultiLayerPerceptron, DenseGaussianVariable, Den
 # todo: implement random re-initialization
 
 
-def get_model(train_config, arch, data_size):
+def get_model(train_config, arch, data_loader):
     if train_config['resume_experiment'] != '' and train_config['resume_experiment'] is not None:
         return load_model_checkpoint()
     else:
-        return LatentVariableModel(train_config, arch, data_size)
+        return DenseLatentVariableModel(train_config, arch, data_loader)
 
 
-class LatentVariableModel(object):
+class DenseLatentVariableModel(object):
 
-    def __init__(self, train_config, arch, data_size):
+    def __init__(self, train_config, arch, data_loader):
 
         self.encoding_form = arch['encoding_form']
         self.constant_variances = arch['constant_prior_variances']
@@ -29,14 +29,19 @@ class LatentVariableModel(object):
         self.kl_min = train_config['kl_min']
         self.concat_variables = arch['concat_variables']
         self.top_size = arch['top_size']
-        self.input_size = np.prod(data_size).astype(int)
+        self.input_size = np.prod(tuple(next(iter(data_loader))[0].size()[1:])).astype(int)
         assert train_config['output_distribution'] in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
         self.output_distribution = train_config['output_distribution']
+        self.reconstruction = None
 
         # construct the model
         self.levels = [None for _ in range(len(arch['n_latent']))]
         self.output_decoder = self.output_dist = self.mean_output = self.log_var_output = self.trainable_log_var = None
         self.__construct__(arch)
+
+        self.whitening_matrix = self.inverse_whitening_matrix = self.data_mean = None
+        if arch['whiten_input']:
+            self.whitening_matrix, self.inverse_whitening_matrix, self.data_mean = self.calculate_whitening_matrix(data_loader)
 
         self._cuda_device = None
         if train_config['cuda_device'] is not None:
@@ -96,7 +101,8 @@ class LatentVariableModel(object):
             self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity='sigmoid', weight_norm=arch['weight_norm_dec'])
         elif self.output_distribution == 'gaussian':
             self.output_dist = DiagonalGaussian(None, None)
-            self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity='sigmoid', weight_norm=arch['weight_norm_dec'])
+            non_lin = 'linear' if arch['whiten_input'] else 'sigmoid'
+            self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity=non_lin, weight_norm=arch['weight_norm_dec'])
             if self.constant_variances:
                 self.trainable_log_var = Variable(torch.zeros(self.input_size), requires_grad=True)
             else:
@@ -145,13 +151,46 @@ class LatentVariableModel(object):
                 decoder_size += (arch['n_latent'][level] + arch['n_det_dec'][level])
         return decoder_size
 
+    def calculate_whitening_matrix(self, data_loader, n_examples=50000):
+        """Calculates and returns the whitening matrix for the training data."""
+        print 'Calculating whitening matrix...'
+        n = 0
+        batch_size = next(iter(data_loader))[0].size()[0]
+        train_data = torch.zeros(batch_size * int(n_examples / batch_size), self.input_size)
+        for batch, _ in data_loader:
+            if n >= train_data.shape[0]:
+                break
+            train_data[n:n+batch.shape[0]] = batch.view(batch_size, -1)
+            n += batch_size
+        train_data = train_data.numpy()
+        data_mean = np.mean(train_data, axis=0)
+        train_centered = train_data - data_mean
+        Sigma = np.dot(train_centered.T, train_centered) / train_centered.shape[0]
+        U, Lambda, _ = np.linalg.svd(Sigma)
+        ZCA_matrix = np.dot(U, np.dot(np.diag(1.0/np.sqrt(Lambda + 1e-5)), U.T))
+        ZCA_matrix_inv = np.linalg.inv(ZCA_matrix)
+        print 'Whitening matrix calculated.'
+        return Variable(torch.from_numpy(ZCA_matrix)), Variable(torch.from_numpy(ZCA_matrix_inv)), Variable(torch.from_numpy(data_mean))
+
+    def process_input(self, input):
+        if self.whitening_matrix is not None:
+            return torch.mm(input - self.data_mean, self.whitening_matrix)
+        else:
+            return input / 255.
+
+    def process_output(self, mean):
+        if self.whitening_matrix is not None:
+            self.reconstruction = self.data_mean + torch.mm(mean, self.inverse_whitening_matrix)
+        else:
+            self.reconstruction = 255. * mean
+
     def get_input_encoding(self, input):
-        """Gets the encoding at the bottom level."""
+        """Encoding at the bottom level."""
         if 'bottom_error' in self.encoding_form or 'bottom_norm_error' in self.encoding_form:
             assert self.output_dist is not None, 'Cannot encode error. Output distribution is None.'
         encoding = None
         if 'posterior' in self.encoding_form:
-            encoding = input - 0.5
+            encoding = input if self.whitening_matrix is not None else input - 0.5
         if 'bottom_error' in self.encoding_form:
             error = input - self.output_dist.mean.detach()
             encoding = error if encoding is None else torch.cat((encoding, error), dim=1)
@@ -170,7 +209,8 @@ class LatentVariableModel(object):
         """Encodes the input into an updated posterior estimate."""
         if self._cuda_device is not None:
             input = input.cuda(self._cuda_device)
-        h = self.get_input_encoding(input.view(-1, self.input_size))
+        input = self.process_input(input.view(-1, self.input_size))
+        h = self.get_input_encoding(input)
         for latent_level in self.levels:
             if self.concat_variables:
                 h = torch.cat([h, latent_level.encode(h)], dim=1)
@@ -198,6 +238,8 @@ class LatentVariableModel(object):
                 self.output_dist.log_var = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
             else:
                 self.output_dist.log_var = self.log_var_output(h)
+
+        self.process_output(self.output_dist.mean)
         return self.output_dist
 
     def kl_divergences(self, averaged=False):
@@ -214,7 +256,7 @@ class LatentVariableModel(object):
         """Returns the conditional likelihood."""
         if self._cuda_device is not None:
             input = input.cuda(self._cuda_device)
-        input = input.view(-1, self.input_size)
+        input = self.process_input(input.view(-1, self.input_size))
         if averaged:
             return self.output_dist.log_prob(sample=input).sum(1).mean(0)
         else:
@@ -326,6 +368,10 @@ class LatentVariableModel(object):
                 self.log_var_output = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
             else:
                 self.log_var_output = self.log_var_output.cuda(device_id)
+        if self.whitening_matrix is not None:
+            self.whitening_matrix = self.whitening_matrix.cuda(device_id)
+            self.inverse_whitening_matrix = self.inverse_whitening_matrix.cuda(device_id)
+            self.data_mean = self.data_mean.cuda(device_id)
 
     def cpu(self):
         """Places the model on the CPU."""
@@ -341,3 +387,7 @@ class LatentVariableModel(object):
                 self.log_var_output = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
             else:
                 self.log_var_output = self.log_var_output.cpu()
+        if self.whitening_matrix is not None:
+            self.whitening_matrix = self.whitening_matrix.cpu()
+            self.inverse_whitening_matrix = self.inverse_whitening_matrix.cpu()
+            self.data_mean = self.data_mean.cpu()
