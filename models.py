@@ -173,16 +173,18 @@ class DenseLatentVariableModel(object):
         return Variable(torch.from_numpy(ZCA_matrix)), Variable(torch.from_numpy(ZCA_matrix_inv)), Variable(torch.from_numpy(data_mean))
 
     def process_input(self, input):
+        """Whitens or scales the input."""
         if self.whitening_matrix is not None:
             return torch.mm(input - self.data_mean, self.whitening_matrix)
         else:
             return input / 255.
 
     def process_output(self, mean):
+        """Colors or un-scales the output."""
         if self.whitening_matrix is not None:
-            self.reconstruction = self.data_mean + torch.mm(mean, self.inverse_whitening_matrix)
+            return self.data_mean + torch.mm(mean, self.inverse_whitening_matrix)
         else:
-            self.reconstruction = 255. * mean
+            return 255. * mean
 
     def get_input_encoding(self, input):
         """Encoding at the bottom level."""
@@ -231,6 +233,7 @@ class DenseLatentVariableModel(object):
             concat = True
 
         h = self.output_decoder(h)
+        #self.output_dist.mean = self.process_output(self.mean_output(h)) / 255.
         self.output_dist.mean = self.mean_output(h)
 
         if self.output_distribution == 'gaussian':
@@ -239,7 +242,8 @@ class DenseLatentVariableModel(object):
             else:
                 self.output_dist.log_var = self.log_var_output(h)
 
-        self.process_output(self.output_dist.mean)
+        self.reconstruction = 255. * self.output_dist.mean
+        #self.reconstruction = self.process_output(self.output_dist.mean)
         return self.output_dist
 
     def kl_divergences(self, averaged=False):
@@ -256,11 +260,16 @@ class DenseLatentVariableModel(object):
         """Returns the conditional likelihood."""
         if self._cuda_device is not None:
             input = input.cuda(self._cuda_device)
-        input = self.process_input(input.view(-1, self.input_size))
+        input = input.view(-1, self.input_size) / 255.
+        #input = self.process_input(input.view(-1, self.input_size))
+        log_prob = self.output_dist.log_prob(sample=input)
+        if self.output_distribution == 'gaussian':
+            log_prob = log_prob - np.log(256.)
+        log_prob = log_prob.sum(1)
         if averaged:
-            return self.output_dist.log_prob(sample=input).sum(1).mean(0)
+            return log_prob.mean(0)
         else:
-            return self.output_dist.log_prob(sample=input).sum(1)
+            return log_prob
 
     def elbo(self, input, averaged=False):
         """Returns the ELBO."""
@@ -391,3 +400,31 @@ class DenseLatentVariableModel(object):
             self.whitening_matrix = self.whitening_matrix.cpu()
             self.inverse_whitening_matrix = self.inverse_whitening_matrix.cpu()
             self.data_mean = self.data_mean.cpu()
+
+
+class DynamicDenseLatentVariableModel(object):
+
+    def __init__(self, train_config, arch, data_loader):
+
+        self.encoding_form = arch['encoding_form']
+        self.constant_variances = arch['constant_prior_variances']
+        self.batch_size = train_config['batch_size']
+        self.kl_min = train_config['kl_min']
+        self.concat_variables = arch['concat_variables']
+        self.top_size = arch['top_size']
+        self.input_size = np.prod(tuple(next(iter(data_loader))[0].size()[1:])).astype(int)
+        assert train_config['output_distribution'] in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
+        self.output_distribution = train_config['output_distribution']
+        self.reconstruction = None
+
+        # construct the model
+        self.levels = [None for _ in range(len(arch['n_latent']))]
+        self.output_decoder = self.output_dist = self.mean_output = self.log_var_output = self.trainable_log_var = None
+        self.__construct__(arch)
+
+        self._cuda_device = None
+        if train_config['cuda_device'] is not None:
+            self.cuda(train_config['cuda_device'])
+
+        def __construct__(arch):
+            pass

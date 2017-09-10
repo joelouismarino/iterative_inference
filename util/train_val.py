@@ -2,6 +2,7 @@ import torch
 from torch.autograd import Variable
 import numpy as np
 from random import shuffle
+from config import train_config
 
 from logs import log_train, log_vis
 from plotting import plot_images, plot_line, plot_train, plot_model_vis
@@ -22,6 +23,9 @@ def train_on_batch(model, batch, n_iterations, optimizers):
         model.decode()
         elbo = model.elbo(batch, averaged=True)
         (-elbo).backward(retain_graph=True)
+        if not train_config['average_gradient']:
+            enc_opt.step()
+            enc_opt.zero_grad()
 
     # final iteration
     dec_opt.zero_grad()
@@ -32,8 +36,9 @@ def train_on_batch(model, batch, n_iterations, optimizers):
     (-elbo).backward()
 
     # divide encoder gradients
-    for param in model.encoder_parameters():
-        param.grad /= n_iterations
+    if train_config['average_gradient']:
+        for param in model.encoder_parameters():
+            param.grad /= n_iterations
 
     # calculate average gradient magnitudes
     def ave_grad_mag(params):

@@ -6,9 +6,10 @@ train_config = {
     'n_iterations': 1,
     'encoder_learning_rate': 0.0002,
     'decoder_learning_rate': 0.0002,
+    'average_gradients': True,
     'kl_min': 0,
     'cuda_device': 1,
-    'display_iter': 10,
+    'display_iter': 100,
     'resume_experiment': None
 }
 
@@ -17,12 +18,12 @@ arch = {
     'encoding_form': ['posterior'],
     'concat_variables': True,
     'variable_update_form': 'direct',
-    'whiten_input': True,
+    'whiten_input': False,
     'constant_prior_variances': True,
     'learn_top_prior': False,
     'top_size': 25,
 
-    'n_latent': [128],
+    'n_latent': [512],
 
     'n_det_enc': [0],
     'n_det_dec': [0],
@@ -36,11 +37,11 @@ arch = {
     'non_linearity_enc': 'elu',
     'non_linearity_dec': 'elu',
 
-    'connection_type_enc': 'sequential',
+    'connection_type_enc': 'highway',
     'connection_type_dec': 'sequential',
 
-    'batch_norm_enc': False,
-    'batch_norm_dec': False,
+    'batch_norm_enc': True,
+    'batch_norm_dec': True,
 
     'weight_norm_enc': False,
     'weight_norm_dec': False,

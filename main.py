@@ -13,7 +13,7 @@ import time
 #           - plot number of 'dead' units or active units
 # todo: figure out why it is using gpu 0
 # todo: get convolutional model working
-# todo: add IAF
+# todo: add IAF and NF
 
 
 log_root = '/home/joe/Research/iterative_inference_logs/'
