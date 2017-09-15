@@ -10,15 +10,15 @@ class PointEstimate(object):
         self.mean = mean
         self._cuda_device = None
 
-    def sample(self):
+    def sample(self, *args, **kwargs):
         assert self.mean is not None, 'Point estimate is None.'
         return self.mean
 
-    def log_prob(self, sample=None):
-        #assert self.mean is not None, 'Point estimate is None.'
-        #if sample is None:
-        #    sample = self.mean
-        pass
+    def log_prob(self, *args, **kwargs):
+        log_p = Variable(torch.zeros(self.mean.data.shape))
+        if self._cuda_device is not None:
+            return log_p.cuda(self._cuda_device)
+        return log_p
 
     def reset_mean(self, value=None):
         assert self.mean is not None or value is not None, 'Mean is None.'

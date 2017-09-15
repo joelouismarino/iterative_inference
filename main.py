@@ -14,6 +14,8 @@ import time
 # todo: figure out why it is using gpu 0
 # todo: get convolutional model working
 # todo: add IAF and NF
+# todo: add recurrent encoding networks
+# todo: add support for multiple samples
 
 
 log_root = '/home/joe/Research/iterative_inference_logs/'

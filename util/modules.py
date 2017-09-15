@@ -292,12 +292,13 @@ class MultiLayerConv(nn.Module):
 
 class DenseGaussianVariable(object):
 
-    def __init__(self, batch_size, n_variables, const_prior_var, n_input, update_form, learn_prior=True):
+    def __init__(self, batch_size, n_variables, const_prior_var, n_input, update_form, posterior_form='gaussian', learn_prior=True):
 
         self.batch_size = batch_size
         self.n_variables = n_variables
         assert update_form in ['direct', 'highway'], 'Latent variable update form not found.'
         self.update_form = update_form
+        self.posterior_form = posterior_form
         self.learn_prior = learn_prior
 
         if self.learn_prior:
@@ -306,30 +307,43 @@ class DenseGaussianVariable(object):
             if not const_prior_var:
                 self.prior_log_var = Dense(n_input[1], self.n_variables)
         self.posterior_mean = Dense(n_input[0], self.n_variables)
-        self.posterior_log_var = Dense(n_input[0], self.n_variables)
+        if self.posterior_form == 'gaussian':
+            self.posterior_log_var = Dense(n_input[0], self.n_variables)
 
         if self.update_form == 'highway':
             self.posterior_mean_gate = Dense(n_input[0], self.n_variables, 'sigmoid')
-            self.posterior_log_var_gate = Dense(n_input[0], self.n_variables, 'sigmoid')
+            if self.posterior_form == 'gaussian':
+                self.posterior_log_var_gate = Dense(n_input[0], self.n_variables, 'sigmoid')
 
-        self.posterior = self.init_dist()
+        self.posterior = self.init_dist(self.posterior_form)
         self.prior = self.init_dist()
         if self.learn_prior and const_prior_var:
             self.prior.log_var_trainable()
 
-    def init_dist(self):
-        return DiagonalGaussian(Variable(torch.zeros(self.batch_size, self.n_variables)),
-                                Variable(torch.zeros(self.batch_size, self.n_variables)))
+    def init_dist(self, form='gaussian'):
+        if form == 'gaussian':
+            return DiagonalGaussian(Variable(torch.zeros(self.batch_size, self.n_variables)),
+                                    Variable(torch.zeros(self.batch_size, self.n_variables)))
+        elif form == 'point_estimate':
+            return PointEstimate(Variable(torch.zeros(self.batch_size, self.n_variables)))
+        else:
+            raise Exception('Distribution form not found.')
 
     def encode(self, input):
         # encode the mean and log variance, update, return sample
-        mean, log_var = self.posterior_mean(input), self.posterior_log_var(input)
+        mean = self.posterior_mean(input)
+        if self.posterior_form == 'gaussian':
+            log_var = self.posterior_log_var(input)
         if self.update_form == 'highway':
             mean_gate = self.posterior_mean_gate(input)
-            log_var_gate = self.posterior_log_var_gate(input)
+            if self.posterior_form == 'gaussian':
+                log_var_gate = self.posterior_log_var_gate(input)
             mean = mean_gate * self.posterior.mean + (1 - mean_gate) * mean
-            log_var = log_var_gate * self.posterior.log_var + (1 - log_var_gate) * log_var
-        self.posterior.mean, self.posterior.log_var = mean, log_var
+            if self.posterior_form == 'gaussian':
+                log_var = log_var_gate * self.posterior.log_var + (1 - log_var_gate) * log_var
+        self.posterior.mean = mean
+        if self.posterior_form == 'gaussian':
+            self.posterior.log_var = log_var
         return self.posterior.sample(resample=True)
 
     def decode(self, input, generate=False):
@@ -352,7 +366,8 @@ class DenseGaussianVariable(object):
 
     def reset(self, from_prior=True):
         self.reset_mean(from_prior)
-        self.reset_log_var(from_prior)
+        if self.posterior_form == 'gaussian':
+            self.reset_log_var(from_prior)
 
     def reset_mean(self, from_prior=True):
         value = None
@@ -378,10 +393,12 @@ class DenseGaussianVariable(object):
             if self.prior_log_var is not None:
                 self.prior_log_var.eval()
         self.posterior_mean.eval()
-        self.posterior_log_var.eval()
+        if self.posterior_form == 'gaussian':
+            self.posterior_log_var.eval()
         if self.update_form == 'highway':
             self.posterior_mean_gate.eval()
-            self.posterior_log_var_gate.eval()
+            if self.posterior_form == 'gaussian':
+                self.posterior_log_var_gate.eval()
 
     def train(self):
         if self.learn_prior:
@@ -389,10 +406,12 @@ class DenseGaussianVariable(object):
             if self.prior_log_var is not None:
                 self.prior_log_var.train()
         self.posterior_mean.train()
-        self.posterior_log_var.train()
+        if self.posterior_form == 'gaussian':
+            self.posterior_log_var.train()
         if self.update_form == 'highway':
             self.posterior_mean_gate.train()
-            self.posterior_log_var_gate.train()
+            if self.posterior_form == 'gaussian':
+                self.posterior_log_var_gate.train()
 
     def cuda(self, device_id=0):
         # place all modules on the GPU
@@ -401,10 +420,12 @@ class DenseGaussianVariable(object):
             if self.prior_log_var is not None:
                 self.prior_log_var.cuda(device_id)
         self.posterior_mean.cuda(device_id)
-        self.posterior_log_var.cuda(device_id)
+        if self.posterior_form == 'gaussian':
+            self.posterior_log_var.cuda(device_id)
         if self.update_form == 'highway':
             self.posterior_mean_gate.cuda(device_id)
-            self.posterior_log_var_gate.cuda(device_id)
+            if self.posterior_form == 'gaussian':
+                self.posterior_log_var_gate.cuda(device_id)
         self.prior.cuda(device_id)
         self.posterior.cuda(device_id)
 
@@ -414,10 +435,12 @@ class DenseGaussianVariable(object):
     def encoder_parameters(self):
         encoder_params = []
         encoder_params.extend(list(self.posterior_mean.parameters()))
-        encoder_params.extend(list(self.posterior_log_var.parameters()))
+        if self.posterior_form == 'gaussian':
+            encoder_params.extend(list(self.posterior_log_var.parameters()))
         if self.update_form == 'highway':
             encoder_params.extend(list(self.posterior_mean_gate.parameters()))
-            encoder_params.extend(list(self.posterior_log_var_gate.parameters()))
+            if self.posterior_form == 'gaussian':
+                encoder_params.extend(list(self.posterior_log_var_gate.parameters()))
         return encoder_params
 
     def decoder_parameters(self):
@@ -532,7 +555,7 @@ class ConvGaussianVariable(object):
 class DenseLatentLevel(object):
 
     def __init__(self, batch_size, encoder_arch, decoder_arch, n_latent, n_det, encoding_form, const_prior_var,
-                 variable_update_form, learn_prior=True):
+                 variable_update_form, posterior_form='gaussian', learn_prior=True):
 
         self.batch_size = batch_size
         self.n_latent = n_latent
@@ -544,7 +567,7 @@ class DenseLatentLevel(object):
         variable_input_sizes = (encoder_arch['n_units'], decoder_arch['n_units'])
 
         self.latent = DenseGaussianVariable(self.batch_size, self.n_latent, const_prior_var, variable_input_sizes,
-                                            variable_update_form, learn_prior)
+                                            variable_update_form, posterior_form, learn_prior)
         self.deterministic_encoder = Dense(variable_input_sizes[0], n_det[0]) if n_det[0] > 0 else None
         self.deterministic_decoder = Dense(variable_input_sizes[1], n_det[1]) if n_det[1] > 0 else None
 

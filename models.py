@@ -54,6 +54,7 @@ class DenseLatentVariableModel(object):
         encoding_form = arch['encoding_form']
         variable_update_form = arch['variable_update_form']
         const_prior_var = arch['constant_prior_variances']
+        posterior_form = arch['posterior_form']
 
         encoder_arch = {}
         encoder_arch['non_linearity'] = arch['non_linearity_enc']
@@ -87,7 +88,7 @@ class DenseLatentVariableModel(object):
             learn_prior = True if arch['learn_top_prior'] else (level != len(arch['n_latent'])-1)
 
             self.levels[level] = DenseLatentLevel(self.batch_size, encoder_arch, decoder_arch, n_latent, n_det,
-                                                  encoding_form, const_prior_var, variable_update_form, learn_prior)
+                                                  encoding_form, const_prior_var, variable_update_form, posterior_form, learn_prior)
 
         # construct the output decoder
         decoder_arch['n_in'] = self.decoder_input_size(-1, arch)

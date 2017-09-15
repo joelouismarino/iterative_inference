@@ -2,11 +2,11 @@
 train_config = {
     'dataset': 'CIFAR_10',
     'output_distribution': 'gaussian',
-    'batch_size': 256,
+    'batch_size': 64,
     'n_iterations': 1,
     'encoder_learning_rate': 0.0002,
     'decoder_learning_rate': 0.0002,
-    'average_gradients': True,
+    'average_gradient': True,
     'kl_min': 0,
     'cuda_device': 1,
     'display_iter': 100,
@@ -16,20 +16,21 @@ train_config = {
 # model architecture
 arch = {
     'encoding_form': ['posterior'],
-    'concat_variables': True,
+    'concat_variables': False,
     'variable_update_form': 'direct',
+    'posterior_form': 'point_estimate',
     'whiten_input': False,
     'constant_prior_variances': True,
     'learn_top_prior': False,
     'top_size': 25,
 
-    'n_latent': [512],
+    'n_latent': [256],
 
     'n_det_enc': [0],
     'n_det_dec': [0],
 
-    'n_layers_enc': [2, 0],
-    'n_layers_dec': [2, 1],
+    'n_layers_enc': [3, 0],
+    'n_layers_dec': [1, 1],
 
     'n_units_enc': [1024, 0],
     'n_units_dec': [1024, 1],
@@ -38,10 +39,10 @@ arch = {
     'non_linearity_dec': 'elu',
 
     'connection_type_enc': 'highway',
-    'connection_type_dec': 'sequential',
+    'connection_type_dec': 'highway',
 
-    'batch_norm_enc': True,
-    'batch_norm_dec': True,
+    'batch_norm_enc': False,
+    'batch_norm_dec': False,
 
     'weight_norm_enc': False,
     'weight_norm_dec': False,
