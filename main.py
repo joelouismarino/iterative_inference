@@ -7,16 +7,6 @@ from util.plotting import init_plot, save_env
 from util.logs import init_log, save_checkpoint
 import time
 
-# todo: visualization
-#           - visualize errors at input level and reconstructions over inference iterations
-#           - latent traversal of lowest variance dimensions
-#           - plot number of 'dead' units or active units
-# todo: figure out why it is using gpu 0
-# todo: get convolutional model working
-# todo: add IAF and NF
-# todo: add recurrent encoding networks
-# todo: add support for multiple samples
-
 
 log_root = '/home/joe/Research/iterative_inference_logs/'
 log_path, log_dir = init_log(log_root, train_config)

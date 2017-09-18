@@ -7,10 +7,6 @@ from util.logs import load_model_checkpoint
 from util.distributions import DiagonalGaussian, Bernoulli
 from util.modules import Dense, MultiLayerPerceptron, DenseGaussianVariable, DenseLatentLevel
 
-# todo: add support for multiple samples to encode, decode
-# todo: allow for printing out the model architecture
-# todo: implement random re-initialization
-
 
 def get_model(train_config, arch, data_loader):
     if train_config['resume_experiment'] != '' and train_config['resume_experiment'] is not None:

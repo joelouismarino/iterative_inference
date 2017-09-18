@@ -4,9 +4,6 @@ from torch.nn import init
 from torch.autograd import Variable
 from distributions import DiagonalGaussian, PointEstimate
 
-# todo: add inverse auto-regressive flow to GaussianVariable
-# todo: get conv modules working
-
 
 class Dense(nn.Module):
 
@@ -146,6 +143,15 @@ class Conv(nn.Module):
         if self.dropout:
             output = self.dropout(output)
         return output
+
+
+class Recurrent(nn.Module):
+
+    def __init__(self):
+        super(Recurrent, self).__init__()
+
+    def forward(self):
+        pass
 
 
 class DenseInverseAutoRegressive(nn.Module):
@@ -655,12 +661,4 @@ class DenseLatentLevel(object):
 
 
 class ConvLatentLevel(object):
-    pass
-
-
-class DynamicalDenseLatentLevel(object):
-    pass
-
-
-class DynamicalConvLatentLevel(object):
     pass

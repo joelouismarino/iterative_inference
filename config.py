@@ -3,21 +3,21 @@ train_config = {
     'dataset': 'CIFAR_10',
     'output_distribution': 'gaussian',
     'batch_size': 64,
-    'n_iterations': 1,
+    'n_iterations': 5,
     'encoder_learning_rate': 0.0002,
     'decoder_learning_rate': 0.0002,
     'average_gradient': True,
     'kl_min': 0,
     'cuda_device': 1,
-    'display_iter': 100,
+    'display_iter': 25,
     'resume_experiment': None
 }
 
 # model architecture
 arch = {
-    'encoding_form': ['posterior'],
+    'encoding_form': ['posterior', 'top_norm_error', 'bottom_norm_error'],
     'concat_variables': False,
-    'variable_update_form': 'direct',
+    'variable_update_form': 'highway',
     'posterior_form': 'point_estimate',
     'whiten_input': False,
     'constant_prior_variances': True,

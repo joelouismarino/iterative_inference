@@ -2,7 +2,7 @@ import torch
 from torch.autograd import Variable
 import numpy as np
 from random import shuffle
-from config import train_config
+from config import train_config, arch
 
 from logs import log_train, log_vis
 from plotting import plot_images, plot_line, plot_train, plot_model_vis
@@ -104,7 +104,8 @@ def run_on_batch(model, batch, n_iterations, vis=False):
             cond_like[:, 0, 1] = model.output_dist.log_var.data.cpu().numpy().reshape(batch_shape)
         for level in range(len(model.levels)):
             posterior[level][:, 0, 0, :] = model.levels[level].latent.posterior.mean.data.cpu().numpy()
-            posterior[level][:, 0, 1, :] = model.levels[level].latent.posterior.log_var.data.cpu().numpy()
+            if arch['posterior_form'] == 'gaussian':
+                posterior[level][:, 0, 1, :] = model.levels[level].latent.posterior.log_var.data.cpu().numpy()
             prior[level][:, 0, 0, :] = model.levels[level].latent.prior.mean.data.cpu().numpy()
             prior[level][:, 0, 1, :] = model.levels[level].latent.prior.log_var.data.cpu().numpy()
 
@@ -124,7 +125,8 @@ def run_on_batch(model, batch, n_iterations, vis=False):
                 cond_like[:, i, 1] = model.output_dist.log_var.data.cpu().numpy().reshape(batch_shape)
             for level in range(len(model.levels)):
                 posterior[level][:, i, 0, :] = model.levels[level].latent.posterior.mean.data.cpu().numpy()
-                posterior[level][:, i, 1, :] = model.levels[level].latent.posterior.log_var.data.cpu().numpy()
+                if arch['posterior_form'] == 'gaussian':
+                    posterior[level][:, i, 1, :] = model.levels[level].latent.posterior.log_var.data.cpu().numpy()
                 prior[level][:, i, 0, :] = model.levels[level].latent.prior.mean.data.cpu().numpy()
                 prior[level][:, i, 1, :] = model.levels[level].latent.prior.log_var.data.cpu().numpy()
 
