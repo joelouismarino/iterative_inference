@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch.nn import init
+from torch.nn import init, Parameter
 from torch.autograd import Variable
 from distributions import DiagonalGaussian, PointEstimate
 
@@ -147,11 +147,25 @@ class Conv(nn.Module):
 
 class Recurrent(nn.Module):
 
-    def __init__(self):
+    def __init__(self, n_in, n_units):
         super(Recurrent, self).__init__()
+        self.lstm = nn.LSTMCell(n_in, n_units)
+        self.initial_hidden = Parameter(torch.zeros(1, n_units))
+        self.initial_cell = Parameter(torch.zeros(1, n_units))
+        self.hidden_state = None
+        self.cell_state = None
 
-    def forward(self):
-        pass
+    def forward(self, input):
+        if self.hidden_state is None:
+            self.hidden_state = self.initial_hidden.repeat(input.data.shape[0], 1)
+        if self.cell_state is None:
+            self.cell_state = self.initial_cell.repeat(input.data.shape[0], 1)
+        self.hidden_state, self.cell_state = self.lstm.forward(input, (self.hidden_state, self.cell_state))
+        return self.hidden_state
+
+    def reset(self):
+        self.hidden_state = None
+        self.cell_state = None
 
 
 class DenseInverseAutoRegressive(nn.Module):
@@ -294,6 +308,52 @@ class MultiLayerConv(nn.Module):
                 input = torch.cat((input, layer(input)), dim=1)
 
         return input
+
+
+class MultiLayerRecurrent(nn.Module):
+
+    def __init__(self, n_in, n_layers, n_units, connection_type='sequential', **kwargs):
+        super(MultiLayerRecurrent, self).__init__()
+        self.n_layers = n_layers
+        self.connection_type = connection_type
+        self.layers = nn.ModuleList([])
+        self.layers.append(Recurrent(n_in, n_units))
+        for _ in range(1, self.n_layers):
+            self.layers.append(Recurrent(n_units, n_units))
+        if connection_type == 'residual':
+            self.input_map = Dense(n_in, n_units)
+        if connection_type == 'highway':
+            self.gates = nn.ModuleList([])
+            self.input_map = Dense(n_in, n_units)
+            self.gates.append(Dense(n_in, n_units, non_linearity='sigmoid'))
+            for _ in range(1, self.n_layers):
+                self.gates.append(Dense(n_units, n_units, non_linearity='sigmoid'))
+
+    def forward(self, input):
+        input_orig = input.clone()
+        for layer_num, layer in enumerate(self.layers):
+            layer_output = layer(input)
+            if self.connection_type == 'sequential':
+                input = layer_output
+            elif self.connection_type == 'residual':
+                if layer_num == 0:
+                    input = self.input_map(input) + layer_output
+                else:
+                    input = input + layer_output
+            elif self.connection_type == 'highway':
+                gate = self.gates[layer_num](input)
+                if layer_num == 0:
+                    input = self.input_map(input)
+                input = gate * input + (1. - gate) * layer_output
+            elif self.connection_type == 'concat':
+                input = torch.cat((input, layer_output), dim=1)
+            elif self.connection_type == 'concat_input':
+                input = torch.cat((input_orig, layer_output), dim=1)
+        return input
+
+    def reset(self):
+        for layer in self.layers:
+            layer.reset()
 
 
 class DenseGaussianVariable(object):
@@ -587,6 +647,8 @@ class DenseLatentLevel(object):
         if ('top_norm_error' in self.encoding_form and in_out == 'in') or ('bottom_norm_error' in self.encoding_form and in_out == 'out'):
             norm_error = self.latent.norm_error()
             encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), 1)
+        if 'gradient' in self.encoding_form and in_out == 'in':
+            pass
         return encoding
 
     def encode(self, input):
@@ -662,3 +724,107 @@ class DenseLatentLevel(object):
 
 class ConvLatentLevel(object):
     pass
+
+
+class RecurrentLatentLevel(object):
+
+    def __init__(self, batch_size, encoder_arch, decoder_arch, n_latent, n_det, encoding_form, const_prior_var,
+                 variable_update_form, posterior_form='gaussian', learn_prior=True):
+
+        self.batch_size = batch_size
+        self.n_latent = n_latent
+        self.encoding_form = encoding_form
+
+        self.encoder = MultiLayerRecurrent(**encoder_arch)
+        self.decoder = MultiLayerPerceptron(**decoder_arch)
+
+        variable_input_sizes = (encoder_arch['n_units'], decoder_arch['n_units'])
+
+        self.latent = DenseGaussianVariable(self.batch_size, self.n_latent, const_prior_var, variable_input_sizes,
+                                            variable_update_form, posterior_form, learn_prior)
+        self.deterministic_encoder = Dense(variable_input_sizes[0], n_det[0]) if n_det[0] > 0 else None
+        self.deterministic_decoder = Dense(variable_input_sizes[1], n_det[1]) if n_det[1] > 0 else None
+
+    def get_encoding(self, input, in_out):
+        encoding = input if in_out == 'in' else None
+        if 'posterior' in self.encoding_form and in_out == 'out':
+            encoding = input
+        if ('top_error' in self.encoding_form and in_out == 'in') or ('bottom_error' in self.encoding_form and in_out == 'out'):
+            error = self.latent.error()
+            encoding = error if encoding is None else torch.cat((encoding, error), 1)
+        if ('top_norm_error' in self.encoding_form and in_out == 'in') or ('bottom_norm_error' in self.encoding_form and in_out == 'out'):
+            norm_error = self.latent.norm_error()
+            encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), 1)
+        if 'gradient' in self.encoding_form and in_out == 'in':
+            pass
+        return encoding
+
+    def encode(self, input):
+        encoded = self.encoder(self.get_encoding(input, 'in'))
+        output = self.get_encoding(self.latent.encode(encoded), 'out')
+        if self.deterministic_encoder:
+            det = self.deterministic_encoder(encoded)
+            output = torch.cat((det, output), 1)
+        return output
+
+    def decode(self, input, generate=False):
+        # decode the input, sample the latent variable, concatenate any deterministic units
+        decoded = self.decoder(input)
+        sample = self.latent.decode(decoded, generate=generate)
+        if self.deterministic_decoder:
+            det = self.deterministic_decoder(decoded)
+            sample = torch.cat((sample, det), 1)
+        return sample
+
+    def kl_divergence(self):
+        return self.latent.kl_divergence()
+
+    def reset(self, from_prior=True):
+        self.latent.reset(from_prior)
+        self.encoder.reset()
+
+    def trainable_state(self):
+        self.latent.trainable_mean()
+        self.latent.trainable_log_var()
+
+    def eval(self):
+        self.encoder.eval()
+        self.decoder.eval()
+        self.latent.eval()
+
+    def train(self):
+        self.encoder.train()
+        self.decoder.train()
+        self.latent.train()
+
+    def cuda(self, device_id=0):
+        # place all modules on the GPU
+        self.encoder.cuda(device_id)
+        self.decoder.cuda(device_id)
+        self.latent.cuda(device_id)
+        if self.deterministic_encoder:
+            self.deterministic_encoder.cuda(device_id)
+        if self.deterministic_decoder:
+            self.deterministic_decoder.cuda(device_id)
+
+    def parameters(self):
+        return self.encoder_parameters() + self.decoder_parameters()
+
+    def encoder_parameters(self):
+        encoder_params = []
+        encoder_params.extend(list(self.encoder.parameters()))
+        if self.deterministic_encoder:
+            encoder_params.extend(list(self.deterministic_encoder.parameters()))
+        encoder_params.extend(list(self.latent.encoder_parameters()))
+        return encoder_params
+
+    def decoder_parameters(self):
+        decoder_params = []
+        decoder_params.extend(list(self.decoder.parameters()))
+        if self.deterministic_decoder:
+            decoder_params.extend(list(self.deterministic_decoder.parameters()))
+        decoder_params.extend(list(self.latent.decoder_parameters()))
+        return decoder_params
+
+    def state_parameters(self):
+        return self.latent.state_parameters()

@@ -5,7 +5,7 @@ import numpy as np
 
 from util.logs import load_model_checkpoint
 from util.distributions import DiagonalGaussian, Bernoulli
-from util.modules import Dense, MultiLayerPerceptron, DenseGaussianVariable, DenseLatentLevel
+from util.modules import Dense, MultiLayerPerceptron, DenseGaussianVariable, DenseLatentLevel, RecurrentLatentLevel
 
 
 def get_model(train_config, arch, data_loader):
@@ -44,13 +44,17 @@ class DenseLatentVariableModel(object):
             self.cuda(train_config['cuda_device'])
 
     def __construct__(self, arch):
-        """Construct the model from the architecture dictionary."""
+        """
+        Construct the model from the architecture dictionary.
+        """
 
         # these are the same across all latent levels
         encoding_form = arch['encoding_form']
         variable_update_form = arch['variable_update_form']
         const_prior_var = arch['constant_prior_variances']
         posterior_form = arch['posterior_form']
+
+        latent_level_type = RecurrentLatentLevel if arch['encoder_type'] == 'recurrent' else DenseLatentLevel
 
         encoder_arch = {}
         encoder_arch['non_linearity'] = arch['non_linearity_enc']
@@ -83,7 +87,7 @@ class DenseLatentVariableModel(object):
 
             learn_prior = True if arch['learn_top_prior'] else (level != len(arch['n_latent'])-1)
 
-            self.levels[level] = DenseLatentLevel(self.batch_size, encoder_arch, decoder_arch, n_latent, n_det,
+            self.levels[level] = latent_level_type(self.batch_size, encoder_arch, decoder_arch, n_latent, n_det,
                                                   encoding_form, const_prior_var, variable_update_form, posterior_form, learn_prior)
 
         # construct the output decoder
@@ -397,31 +401,3 @@ class DenseLatentVariableModel(object):
             self.whitening_matrix = self.whitening_matrix.cpu()
             self.inverse_whitening_matrix = self.inverse_whitening_matrix.cpu()
             self.data_mean = self.data_mean.cpu()
-
-
-class DynamicDenseLatentVariableModel(object):
-
-    def __init__(self, train_config, arch, data_loader):
-
-        self.encoding_form = arch['encoding_form']
-        self.constant_variances = arch['constant_prior_variances']
-        self.batch_size = train_config['batch_size']
-        self.kl_min = train_config['kl_min']
-        self.concat_variables = arch['concat_variables']
-        self.top_size = arch['top_size']
-        self.input_size = np.prod(tuple(next(iter(data_loader))[0].size()[1:])).astype(int)
-        assert train_config['output_distribution'] in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
-        self.output_distribution = train_config['output_distribution']
-        self.reconstruction = None
-
-        # construct the model
-        self.levels = [None for _ in range(len(arch['n_latent']))]
-        self.output_decoder = self.output_dist = self.mean_output = self.log_var_output = self.trainable_log_var = None
-        self.__construct__(arch)
-
-        self._cuda_device = None
-        if train_config['cuda_device'] is not None:
-            self.cuda(train_config['cuda_device'])
-
-        def __construct__(arch):
-            pass

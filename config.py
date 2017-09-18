@@ -16,6 +16,7 @@ train_config = {
 # model architecture
 arch = {
     'encoding_form': ['posterior', 'top_norm_error', 'bottom_norm_error'],
+    'encoder_type': 'recurrent',
     'concat_variables': False,
     'variable_update_form': 'highway',
     'posterior_form': 'point_estimate',
