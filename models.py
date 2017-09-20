@@ -21,6 +21,7 @@ class DenseLatentVariableModel(object):
 
         self.encoding_form = arch['encoding_form']
         self.constant_variances = arch['constant_prior_variances']
+        self.posterior_form = arch['posterior_form']
         self.batch_size = train_config['batch_size']
         self.kl_min = train_config['kl_min']
         self.concat_variables = arch['concat_variables']
@@ -46,6 +47,8 @@ class DenseLatentVariableModel(object):
     def __construct__(self, arch):
         """
         Construct the model from the architecture dictionary.
+        :param arch: architecture dictionary
+        :return None
         """
 
         # these are the same across all latent levels
@@ -110,35 +113,51 @@ class DenseLatentVariableModel(object):
                 self.log_var_output = Dense(arch['n_units_dec'][0], self.input_size, weight_norm=arch['weight_norm_dec'])
 
     def encoder_input_size(self, level_num, arch):
-        """Calculates the size of the encoding input to a level."""
+        """
+        Calculates the size of the encoding input to a level.
+        If we're encoding the gradient, then the encoding size
+        is the size of the latent variables (x 2 if Gaussian variable).
+        Otherwise, the encoding size depends on how many errors/variables
+        we're encoding.
+        :param level_num: the index of the level we're calculating the
+                          encoding size for
+        :param arch: architecture dictionary
+        :return: the size of this level's encoder's input
+        """
 
         def _encoding_size(_self, _level_num, _arch, lower_level=False):
 
-            if _level_num == 0:
-                latent_size = _self.input_size
-                det_size = 0
+            if 'gradient' in self.encoding_form:
+                encoding_size = _arch['n_latent'][_level_num]
+                if self.posterior_form == 'gaussian':
+                    encoding_size *= 2
             else:
-                latent_size = _arch['n_latent'][_level_num-1]
-                det_size = _arch['n_det_enc'][_level_num-1]
-            encoding_size = det_size
+                if _level_num == 0:
+                    latent_size = _self.input_size
+                    det_size = 0
+                else:
+                    latent_size = _arch['n_latent'][_level_num-1]
+                    det_size = _arch['n_det_enc'][_level_num-1]
+                encoding_size = det_size
 
-            if 'posterior' in _self.encoding_form:
-                encoding_size += latent_size
-            if 'bottom_error' in _self.encoding_form:
-                encoding_size += latent_size
-            if 'bottom_norm_error' in _self.encoding_form:
-                encoding_size += latent_size
-            if 'top_error' in _self.encoding_form and not lower_level:
-                encoding_size += _arch['n_latent'][_level_num]
-            if 'top_norm_error' in _self.encoding_form and not lower_level:
-                encoding_size += _arch['n_latent'][_level_num]
+                if 'posterior' in _self.encoding_form:
+                    encoding_size += latent_size
+                if 'bottom_error' in _self.encoding_form:
+                    encoding_size += latent_size
+                if 'bottom_norm_error' in _self.encoding_form:
+                    encoding_size += latent_size
+                if 'top_error' in _self.encoding_form and not lower_level:
+                    encoding_size += _arch['n_latent'][_level_num]
+                if 'top_norm_error' in _self.encoding_form and not lower_level:
+                    encoding_size += _arch['n_latent'][_level_num]
 
             return encoding_size
 
         encoder_size = _encoding_size(self, level_num, arch)
-        if self.concat_variables:
-            for level in range(level_num):
-                encoder_size += _encoding_size(self, level, arch, lower_level=True)
+        if 'gradient' not in self.encoding_form:
+            if self.concat_variables:
+                for level in range(level_num):
+                    encoder_size += _encoding_size(self, level, arch, lower_level=True)
         return encoder_size
 
     def decoder_input_size(self, level_num, arch):
@@ -174,21 +193,32 @@ class DenseLatentVariableModel(object):
         return Variable(torch.from_numpy(ZCA_matrix)), Variable(torch.from_numpy(ZCA_matrix_inv)), Variable(torch.from_numpy(data_mean))
 
     def process_input(self, input):
-        """Whitens or scales the input."""
+        """
+        Whitens or scales the input.
+        :param input: the input data
+        """
         if self.whitening_matrix is not None:
             return torch.mm(input - self.data_mean, self.whitening_matrix)
         else:
             return input / 255.
 
     def process_output(self, mean):
-        """Colors or un-scales the output."""
+        """
+        Colors or un-scales the output.
+        :param mean: the mean of the output distribution
+        :return the unnormalized or unscaled mean
+        """
         if self.whitening_matrix is not None:
             return self.data_mean + torch.mm(mean, self.inverse_whitening_matrix)
         else:
             return 255. * mean
 
     def get_input_encoding(self, input):
-        """Encoding at the bottom level."""
+        """
+        Encoding at the bottom level.
+        :param input: the input data
+        :return the encoding of the data
+        """
         if 'bottom_error' in self.encoding_form or 'bottom_norm_error' in self.encoding_form:
             assert self.output_dist is not None, 'Cannot encode error. Output distribution is None.'
         encoding = None
@@ -209,19 +239,34 @@ class DenseLatentVariableModel(object):
         return encoding
 
     def encode(self, input):
-        """Encodes the input into an updated posterior estimate."""
+        """
+        Encodes the input into an updated posterior estimate.
+        :param input: the data input
+        :return None
+        """
         if self._cuda_device is not None:
             input = input.cuda(self._cuda_device)
         input = self.process_input(input.view(-1, self.input_size))
-        h = self.get_input_encoding(input)
-        for latent_level in self.levels:
-            if self.concat_variables:
-                h = torch.cat([h, latent_level.encode(h)], dim=1)
-            else:
-                h = latent_level.encode(h)
+
+        if 'gradient' in self.encoding_form:
+            state_grads = self.state_gradients(input)
+            for level_num, latent_level in enumerate(self.levels):
+                grads = torch.cat(state_grads[level_num], dim=1)
+                latent_level.encode(grads)
+        else:
+            h = self.get_input_encoding(input)
+            for latent_level in self.levels:
+                if self.concat_variables:
+                    h = torch.cat([h, latent_level.encode(h)], dim=1)
+                else:
+                    h = latent_level.encode(h)
 
     def decode(self, generate=False):
-        """Decodes the posterior (prior) estimate to get a reconstruction (sample)."""
+        """
+        Decodes the posterior (prior) estimate to get a reconstruction (sample).
+        :param generate: flag to generate or reconstruct the data
+        :return output distribution of reconstruction/sample
+        """
         h = Variable(torch.zeros(self.batch_size, self.top_size))
         if self._cuda_device is not None:
             h = h.cuda(self._cuda_device)
@@ -248,7 +293,11 @@ class DenseLatentVariableModel(object):
         return self.output_dist
 
     def kl_divergences(self, averaged=False):
-        """Returns a list containing kl divergences at each level."""
+        """
+        Returns a list containing kl divergences at each level.
+        :param averaged: whether to average across the batch dimension
+        :return list of KL divergences at each level
+        """
         kl = []
         for latent_level in self.levels:
             kl.append(torch.clamp(latent_level.kl_divergence(), min=self.kl_min).sum(1))
@@ -258,7 +307,12 @@ class DenseLatentVariableModel(object):
             return kl
 
     def conditional_log_likelihoods(self, input, averaged=False):
-        """Returns the conditional likelihood."""
+        """
+        Returns the conditional likelihood.
+        :param input: the input data
+        :param averaged: whether to average across the batch dimension
+        :return the conditional log likelihood
+        """
         if self._cuda_device is not None:
             input = input.cuda(self._cuda_device)
         input = input.view(-1, self.input_size) / 255.
@@ -273,7 +327,12 @@ class DenseLatentVariableModel(object):
             return log_prob
 
     def elbo(self, input, averaged=False):
-        """Returns the ELBO."""
+        """
+        Returns the ELBO.
+        :param input: the input data
+        :param averaged: whether to average across the batch dimension
+        :return the ELBO
+        """
         cond_like = self.conditional_log_likelihoods(input)
         kl = sum(self.kl_divergences())
         lower_bound = cond_like - kl
@@ -283,7 +342,11 @@ class DenseLatentVariableModel(object):
             return lower_bound
 
     def losses(self, input, averaged=False):
-        """Returns all losses."""
+        """
+        Returns all losses.
+        :param input: the input data
+        :param averaged: whether to average across the batch dimension
+        """
         cond_log_like = self.conditional_log_likelihoods(input)
         kl = self.kl_divergences()
         lower_bound = cond_log_like - sum(kl)
@@ -291,6 +354,29 @@ class DenseLatentVariableModel(object):
             return lower_bound.mean(0), cond_log_like.mean(0), [level_kl.mean(0) for level_kl in kl]
         else:
             return lower_bound, cond_log_like, kl
+
+    def state_gradients(self, input):
+        """
+        Get the gradients for the approximate posterior parameters.
+        :param input: the data input
+        :return: dictionary containing keys for each level with lists of gradients
+        """
+        # make the state trainable (to get the gradient)
+        self.trainable_state()
+
+        # decode to get the output dist using trainable state
+        self.decode()
+
+        # evaluate the loss and backprop gradients
+        elbo = self.elbo(input, averaged=True)
+        elbo.backward()
+
+        # create the state gradient dictionary and fill it
+        state_grads = {}
+        for level_num, latent_level in enumerate(self.levels):
+            state_grads[level_num] = latent_level.state_parameters()
+
+        return state_grads
 
     def reset_state(self):
         """Resets the posterior estimate."""

@@ -3,8 +3,9 @@ Implementation of iterative inference in deep latent variable models
 
 # To-do
 - [ ] Figure out why we're using GPU0. Suspect it's from the data loader.
-- [ ] Recurrent encoding networks.
-- [ ] Direct gradient encoding.
+- [x] Recurrent encoding networks.
+- [x] Direct gradient encoding.
+- [ ] Variational EM training, evaluation.
 - [ ] Multiple samples/estimates.
 - [ ] Convolutional model.
 - [ ] Normalizing flows and IAF.

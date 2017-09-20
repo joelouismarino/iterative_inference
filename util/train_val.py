@@ -21,9 +21,8 @@ def train_on_batch(model, batch, n_iterations, optimizers):
     for _ in range(n_iterations - 1):
         model.encode(batch)
         model.decode()
-        if arch['encoder_type'] != 'recurrent':
-            elbo = model.elbo(batch, averaged=True)
-            (-elbo).backward(retain_graph=True)
+        elbo = model.elbo(batch, averaged=True)
+        (-elbo).backward(retain_graph=True)
         if not train_config['average_gradient']:
             enc_opt.step()
             enc_opt.zero_grad()
