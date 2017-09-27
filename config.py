@@ -3,43 +3,52 @@ train_config = {
     'dataset': 'CIFAR_10',
     'output_distribution': 'gaussian',
     'batch_size': 64,
-    'n_iterations': 10,
-    'encoder_learning_rate': 0.0001,
-    'decoder_learning_rate': 0.0001,
+    'n_samples': 1,  # not yet implemented
+    'n_iterations': 5,
+    'encoder_optimizer': 'adam',
+    'decdoer_optimizer': 'adam',
+    'encoder_learning_rate': 0.0002,
+    'decoder_learning_rate': 0.0002,
     'average_gradient': False,
+    'encoder_decoder_train_multiple': 1,
     'kl_min': 0,
-    'cuda_device': 0,
+    'cuda_device': 1,
     'display_iter': 10,
     'resume_experiment': None
 }
 
 # model architecture
 arch = {
-    'encoding_form': ['posterior', 'bottom_error', 'top_error'],
-    'encoder_type': 'feedforward',
-    'concat_variables': False,
+    'model_form': 'dense',  # 'dense', 'conv'
+
+    'encoder_type': 'inference_model',  # 'em', 'inference_model'
+
+    'inference_model_type': 'feedforward',  # 'feedforward', 'recurrent'
+    'encoding_form': ['posterior', 'top_error', 'bottom_error'],
     'variable_update_form': 'highway',
+
+    'concat_variables': False,
     'posterior_form': 'gaussian',
     'whiten_input': False,
     'constant_prior_variances': True,
     'learn_top_prior': False,
-    'top_size': 25,
+    'top_size': 1,
 
-    'n_latent': [256],
+    'n_latent': [128],
 
     'n_det_enc': [0],
     'n_det_dec': [0],
 
-    'n_layers_enc': [2, 0],
+    'n_layers_enc': [3, 0],
     'n_layers_dec': [2, 1],
 
-    'n_units_enc': [512, 0],
-    'n_units_dec': [512, 1],
+    'n_units_enc': [1024, 0],
+    'n_units_dec': [1024, 1],
 
     'non_linearity_enc': 'elu',
     'non_linearity_dec': 'elu',
 
-    'connection_type_enc': 'sequential',
+    'connection_type_enc': 'highway',
     'connection_type_dec': 'sequential',
 
     'batch_norm_enc': False,

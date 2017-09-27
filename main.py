@@ -24,7 +24,7 @@ train_loader, val_loader, label_names = load_data(train_config['dataset'], data_
 model = get_model(train_config, arch, train_loader)
 
 # get optimizers
-(enc_opt, enc_scheduler), (dec_opt, dec_scheduler) = get_optimizers(train_config, model)
+(enc_opt, enc_scheduler), (dec_opt, dec_scheduler) = get_optimizers(train_config, arch, model)
 
 for epoch in range(1000):
     print 'Epoch: ' + str(epoch+1)

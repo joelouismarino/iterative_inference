@@ -234,7 +234,7 @@ class MultiLayerPerceptron(nn.Module):
                 if layer_num == 0:
                     input = self.initial_dense(input) + layer(input)
                 else:
-                    input += layer(input)
+                    input = input + layer(input)
             elif self.connection_type == 'highway':
                 gate = self.gates[layer_num]
                 if layer_num == 0:
@@ -292,7 +292,7 @@ class MultiLayerConv(nn.Module):
                 if layer_num == 0:
                     input = self.initial_conv(input) + layer(input)
                 else:
-                    input += layer(input)
+                    input = input + layer(input)
 
             elif self.connection_type == 'highway':
                 gate = self.gates[layer_num]
@@ -406,7 +406,7 @@ class DenseGaussianVariable(object):
                 log_var_gate = self.posterior_log_var_gate(input)
             mean = mean_gate * self.posterior.mean + (1 - mean_gate) * mean
             if self.posterior_form == 'gaussian':
-                log_var = log_var_gate * self.posterior.log_var + (1 - log_var_gate) * log_var
+                log_var = torch.clamp(log_var_gate * self.posterior.log_var + (1 - log_var_gate) * log_var, -15., 15.)
         self.posterior.mean = mean
         if self.posterior_form == 'gaussian':
             self.posterior.log_var = log_var
@@ -627,7 +627,9 @@ class DenseLatentLevel(object):
         self.n_latent = n_latent
         self.encoding_form = encoding_form
 
-        self.encoder = MultiLayerPerceptron(**encoder_arch)
+        self.encoder = None
+        if encoder_arch is not None:
+            self.encoder = MultiLayerPerceptron(**encoder_arch)
         self.decoder = MultiLayerPerceptron(**decoder_arch)
 
         variable_input_sizes = (encoder_arch['n_units'], decoder_arch['n_units'])
@@ -647,6 +649,15 @@ class DenseLatentLevel(object):
         if ('top_norm_error' in self.encoding_form and in_out == 'in') or ('bottom_norm_error' in self.encoding_form and in_out == 'out'):
             norm_error = self.latent.norm_error()
             encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), 1)
+        if 'mean' in self.encoding_form and in_out == 'in':
+            approx_post_mean = self.latent.posterior.mean
+            encoding = approx_post_mean if encoding is None else torch.cat((encoding, approx_post_mean), 1)
+        if 'log_var' in self.encoding_form and in_out == 'in':
+            approx_post_log_var = self.latent.posterior.log_var
+            encoding = approx_post_log_var if encoding is None else torch.cat((encoding, approx_post_log_var), 1)
+        if 'var' in self.encoding_form and in_out == 'in':
+            approx_post_var = torch.exp(self.latent.posterior.log_var)
+            encoding = approx_post_var if encoding is None else torch.cat((encoding, approx_post_var), 1)
         if 'gradient' in self.encoding_form and in_out == 'in':
             pass
         return encoding

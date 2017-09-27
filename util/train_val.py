@@ -8,7 +8,7 @@ from logs import log_train, log_vis
 from plotting import plot_images, plot_line, plot_train, plot_model_vis
 
 
-def train_on_batch(model, batch, n_iterations, optimizers):
+def train_on_batch(model, batch, n_iterations, optimizers, train_enc=True, train_dec=True):
 
     enc_opt, dec_opt = optimizers
 
@@ -23,8 +23,9 @@ def train_on_batch(model, batch, n_iterations, optimizers):
         model.decode()
         elbo = model.elbo(batch, averaged=True)
         (-elbo).backward(retain_graph=True)
-        if not train_config['average_gradient']:
-            enc_opt.step()
+        if not train_config['average_gradient'] or arch['encoder_type'] == 'em':
+            if train_enc:
+                enc_opt.step()
             enc_opt.zero_grad()
 
     # final iteration
@@ -59,8 +60,10 @@ def train_on_batch(model, batch, n_iterations, optimizers):
     grad_mags[-1, :] = np.array([0., output_decoder_grad_mag])
 
     # update parameters
-    enc_opt.step()
-    dec_opt.step()
+    if train_enc:
+        enc_opt.step()
+    if train_dec:
+        dec_opt.step()
 
     elbo = elbo.data.cpu().numpy()[0]
     cond_log_like = cond_log_like.data.cpu().numpy()[0]
@@ -238,6 +241,9 @@ def train(model, train_config, data_loader, optimizers):
             else:
                 rand_values = Variable(rand_values)
             batch = torch.clamp(batch + rand_values, 0., 255.)
+
+        for _ in range(train_config['encoder_decoder_train_multiple']-1):
+            _, _, _, _ = train_on_batch(model, batch, train_config['n_iterations'], optimizers, train_enc=True, train_dec=False)
 
         elbo, cond_log_like, kl, grad_mags = train_on_batch(model, batch, train_config['n_iterations'], optimizers)
 

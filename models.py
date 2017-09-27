@@ -1,6 +1,6 @@
 import torch
-import torch.utils.data
 from torch.autograd import Variable
+import torch.optim as opt
 import numpy as np
 
 from util.logs import load_model_checkpoint
@@ -11,8 +11,10 @@ from util.modules import Dense, MultiLayerPerceptron, DenseGaussianVariable, Den
 def get_model(train_config, arch, data_loader):
     if train_config['resume_experiment'] != '' and train_config['resume_experiment'] is not None:
         return load_model_checkpoint()
-    else:
+    elif arch['model_form'] == 'dense':
         return DenseLatentVariableModel(train_config, arch, data_loader)
+    elif arch['model_form'] == 'conv':
+        return ConvLatentVariableModel(train_config, arch, data_loader)
 
 
 class DenseLatentVariableModel(object):
@@ -34,6 +36,7 @@ class DenseLatentVariableModel(object):
         # construct the model
         self.levels = [None for _ in range(len(arch['n_latent']))]
         self.output_decoder = self.output_dist = self.mean_output = self.log_var_output = self.trainable_log_var = None
+        self.state_optimizer = None
         self.__construct__(arch)
 
         self.whitening_matrix = self.inverse_whitening_matrix = self.data_mean = None
@@ -59,14 +62,16 @@ class DenseLatentVariableModel(object):
 
         latent_level_type = RecurrentLatentLevel if arch['encoder_type'] == 'recurrent' else DenseLatentLevel
 
-        encoder_arch = {}
-        encoder_arch['non_linearity'] = arch['non_linearity_enc']
-        encoder_arch['connection_type'] = arch['connection_type_enc']
-        encoder_arch['batch_norm'] = arch['batch_norm_enc']
-        encoder_arch['weight_norm'] = arch['weight_norm_enc']
-        encoder_arch['dropout'] = arch['dropout_enc']
+        encoder_arch = None
+        if arch['encoder_type'] != 'em':
+            encoder_arch = dict()
+            encoder_arch['non_linearity'] = arch['non_linearity_enc']
+            encoder_arch['connection_type'] = arch['connection_type_enc']
+            encoder_arch['batch_norm'] = arch['batch_norm_enc']
+            encoder_arch['weight_norm'] = arch['weight_norm_enc']
+            encoder_arch['dropout'] = arch['dropout_enc']
 
-        decoder_arch = {}
+        decoder_arch = dict()
         decoder_arch['non_linearity'] = arch['non_linearity_dec']
         decoder_arch['connection_type'] = arch['connection_type_dec']
         decoder_arch['batch_norm'] = arch['batch_norm_dec']
@@ -75,11 +80,12 @@ class DenseLatentVariableModel(object):
 
         # construct a DenseLatentLevel for each level of latent variables
         for level in range(len(arch['n_latent'])):
-
             # get specifications for this level's encoder and decoder
-            encoder_arch['n_in'] = self.encoder_input_size(level, arch)
-            encoder_arch['n_units'] = arch['n_units_enc'][level]
-            encoder_arch['n_layers'] = arch['n_layers_enc'][level]
+
+            if arch['encoder_type'] != 'EM':
+                encoder_arch['n_in'] = self.encoder_input_size(level, arch)
+                encoder_arch['n_units'] = arch['n_units_enc'][level]
+                encoder_arch['n_layers'] = arch['n_layers_enc'][level]
 
             decoder_arch['n_in'] = self.decoder_input_size(level, arch)
             decoder_arch['n_units'] = arch['n_units_dec'][level+1]
@@ -108,9 +114,13 @@ class DenseLatentVariableModel(object):
             non_lin = 'linear' if arch['whiten_input'] else 'sigmoid'
             self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity=non_lin, weight_norm=arch['weight_norm_dec'])
             if self.constant_variances:
-                self.trainable_log_var = Variable(torch.zeros(self.input_size), requires_grad=True)
+                self.trainable_log_var = Variable(torch.normal(torch.zeros(self.input_size), 0.25), requires_grad=True)
             else:
                 self.log_var_output = Dense(arch['n_units_dec'][0], self.input_size, weight_norm=arch['weight_norm_dec'])
+
+        # make the state trainable if encoder_type is EM
+        if arch['encoder_type'] == 'em':
+            self.trainable_state()
 
     def encoder_input_size(self, level_num, arch):
         """
@@ -142,6 +152,12 @@ class DenseLatentVariableModel(object):
 
                 if 'posterior' in _self.encoding_form:
                     encoding_size += latent_size
+                if 'mean' in _self.encoding_form and not lower_level:
+                    encoding_size += _arch['n_latent'][_level_num]
+                if 'log_var' in _self.encoding_form and not lower_level:
+                    encoding_size += _arch['n_latent'][_level_num]
+                if 'var' in _self.encoding_form and not lower_level:
+                    encoding_size += _arch['n_latent'][_level_num]
                 if 'bottom_error' in _self.encoding_form:
                     encoding_size += latent_size
                 if 'bottom_norm_error' in _self.encoding_form:
@@ -244,22 +260,23 @@ class DenseLatentVariableModel(object):
         :param input: the data input
         :return None
         """
-        if self._cuda_device is not None:
-            input = input.cuda(self._cuda_device)
-        input = self.process_input(input.view(-1, self.input_size))
+        if self.state_optimizer is None:
+            if self._cuda_device is not None:
+                input = input.cuda(self._cuda_device)
+            input = self.process_input(input.view(-1, self.input_size))
 
-        if 'gradient' in self.encoding_form:
-            state_grads = self.state_gradients(input)
-            for level_num, latent_level in enumerate(self.levels):
-                grads = torch.cat(state_grads[level_num], dim=1)
-                latent_level.encode(grads)
-        else:
-            h = self.get_input_encoding(input)
-            for latent_level in self.levels:
-                if self.concat_variables:
-                    h = torch.cat([h, latent_level.encode(h)], dim=1)
-                else:
-                    h = latent_level.encode(h)
+            if 'gradient' in self.encoding_form:
+                state_grads = self.state_gradients(input)
+                for level_num, latent_level in enumerate(self.levels):
+                    grads = torch.cat(state_grads[level_num], dim=1)
+                    latent_level.encode(grads)
+            else:
+                h = self.get_input_encoding(input)
+                for latent_level in self.levels:
+                    if self.concat_variables:
+                        h = torch.cat([h, latent_level.encode(h)], dim=1)
+                    else:
+                        h = latent_level.encode(h)
 
     def decode(self, generate=False):
         """
@@ -284,9 +301,9 @@ class DenseLatentVariableModel(object):
 
         if self.output_distribution == 'gaussian':
             if self.constant_variances:
-                self.output_dist.log_var = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
+                self.output_dist.log_var = torch.clamp(self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1), -7., 15)
             else:
-                self.output_dist.log_var = self.log_var_output(h)
+                self.output_dist.log_var = torch.clamp(self.log_var_output(h), -15., 15)
 
         self.reconstruction = 255. * self.output_dist.mean
         #self.reconstruction = self.process_output(self.output_dist.mean)
@@ -487,3 +504,9 @@ class DenseLatentVariableModel(object):
             self.whitening_matrix = self.whitening_matrix.cpu()
             self.inverse_whitening_matrix = self.inverse_whitening_matrix.cpu()
             self.data_mean = self.data_mean.cpu()
+
+
+class ConvLatentVariableModel(object):
+
+    def __init__(self, train_config, arch, data_loader):
+        raise NotImplementedError
