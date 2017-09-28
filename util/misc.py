@@ -17,11 +17,11 @@ def get_optimizers(train_config, arch, model):
         else:
             encoder_params = model.state_parameters()
 
-        if arch['encoder_optimizer'] in ['sgd', 'SGD']:
+        if train_config['encoder_optimizer'] in ['sgd', 'SGD']:
             enc_opt = opt.SGD(encoder_params, lr=train_config['encoder_learning_rate'])
-        elif arch['encoder_optimizer'] in ['rmsprop', 'RMSprop']:
+        elif train_config['encoder_optimizer'] in ['rmsprop', 'RMSprop']:
             enc_opt = opt.RMSprop(encoder_params, lr=train_config['encoder_learning_rate'])
-        elif arch['encoder_optimizer'] in ['adam', 'Adam']:
+        elif train_config['encoder_optimizer'] in ['adam', 'Adam']:
             enc_opt = opt.Adam(encoder_params, lr=train_config['encoder_learning_rate'])
 
         decoder_params = model.decoder_parameters()

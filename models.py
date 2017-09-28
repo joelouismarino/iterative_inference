@@ -63,7 +63,7 @@ class DenseLatentVariableModel(object):
         latent_level_type = RecurrentLatentLevel if arch['encoder_type'] == 'recurrent' else DenseLatentLevel
 
         encoder_arch = None
-        if arch['encoder_type'] != 'em':
+        if arch['encoder_type'] == 'inference_model':
             encoder_arch = dict()
             encoder_arch['non_linearity'] = arch['non_linearity_enc']
             encoder_arch['connection_type'] = arch['connection_type_enc']
@@ -82,7 +82,7 @@ class DenseLatentVariableModel(object):
         for level in range(len(arch['n_latent'])):
             # get specifications for this level's encoder and decoder
 
-            if arch['encoder_type'] != 'EM':
+            if arch['encoder_type'] == 'inference_model':
                 encoder_arch['n_in'] = self.encoder_input_size(level, arch)
                 encoder_arch['n_units'] = arch['n_units_enc'][level]
                 encoder_arch['n_layers'] = arch['n_layers_enc'][level]
@@ -119,7 +119,7 @@ class DenseLatentVariableModel(object):
                 self.log_var_output = Dense(arch['n_units_dec'][0], self.input_size, weight_norm=arch['weight_norm_dec'])
 
         # make the state trainable if encoder_type is EM
-        if arch['encoder_type'] == 'em':
+        if arch['encoder_type'] in ['em', 'EM']:
             self.trainable_state()
 
     def encoder_input_size(self, level_num, arch):
@@ -372,27 +372,14 @@ class DenseLatentVariableModel(object):
         else:
             return lower_bound, cond_log_like, kl
 
-    def state_gradients(self, input):
+    def state_gradients(self):
         """
         Get the gradients for the approximate posterior parameters.
-        :param input: the data input
         :return: dictionary containing keys for each level with lists of gradients
         """
-        # make the state trainable (to get the gradient)
-        self.trainable_state()
-
-        # decode to get the output dist using trainable state
-        self.decode()
-
-        # evaluate the loss and backprop gradients
-        elbo = self.elbo(input, averaged=True)
-        elbo.backward()
-
-        # create the state gradient dictionary and fill it
         state_grads = {}
         for level_num, latent_level in enumerate(self.levels):
-            state_grads[level_num] = latent_level.state_parameters()
-
+            state_grads[level_num] = latent_level.state_gradients()
         return state_grads
 
     def reset_state(self):

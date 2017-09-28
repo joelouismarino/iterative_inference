@@ -243,7 +243,7 @@ def train(model, train_config, data_loader, optimizers):
             batch = torch.clamp(batch + rand_values, 0., 255.)
 
         for _ in range(train_config['encoder_decoder_train_multiple']-1):
-            _, _, _, _ = train_on_batch(model, batch, train_config['n_iterations'], optimizers, train_enc=True, train_dec=False)
+            train_on_batch(model, batch, train_config['n_iterations'], optimizers, train_enc=True, train_dec=False)
 
         elbo, cond_log_like, kl, grad_mags = train_on_batch(model, batch, train_config['n_iterations'], optimizers)
 

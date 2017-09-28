@@ -408,8 +408,10 @@ class DenseGaussianVariable(object):
             if self.posterior_form == 'gaussian':
                 log_var = torch.clamp(log_var_gate * self.posterior.log_var + (1 - log_var_gate) * log_var, -15., 15.)
         self.posterior.mean = mean
+        self.posterior.mean.retain_grad()
         if self.posterior_form == 'gaussian':
             self.posterior.log_var = log_var
+            self.posterior.log_var.retain_grad()
         return self.posterior.sample(resample=True)
 
     def decode(self, input, generate=False):
@@ -521,6 +523,12 @@ class DenseGaussianVariable(object):
 
     def state_parameters(self):
         return self.posterior.state_parameters()
+
+    def state_gradients(self):
+        grads = [self.posterior.mean.grad]
+        if self.posterior_form == 'gaussian':
+            grads += [self.posterior.log_var.grad]
+        return grads
 
 
 class ConvGaussianVariable(object):
@@ -650,13 +658,13 @@ class DenseLatentLevel(object):
             norm_error = self.latent.norm_error()
             encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), 1)
         if 'mean' in self.encoding_form and in_out == 'in':
-            approx_post_mean = self.latent.posterior.mean
+            approx_post_mean = self.latent.posterior.mean.detach()
             encoding = approx_post_mean if encoding is None else torch.cat((encoding, approx_post_mean), 1)
         if 'log_var' in self.encoding_form and in_out == 'in':
-            approx_post_log_var = self.latent.posterior.log_var
+            approx_post_log_var = self.latent.posterior.log_var.detach()
             encoding = approx_post_log_var if encoding is None else torch.cat((encoding, approx_post_log_var), 1)
         if 'var' in self.encoding_form and in_out == 'in':
-            approx_post_var = torch.exp(self.latent.posterior.log_var)
+            approx_post_var = torch.exp(self.latent.posterior.log_var.detach())
             encoding = approx_post_var if encoding is None else torch.cat((encoding, approx_post_var), 1)
         if 'gradient' in self.encoding_form and in_out == 'in':
             pass
@@ -731,6 +739,9 @@ class DenseLatentLevel(object):
 
     def state_parameters(self):
         return self.latent.state_parameters()
+
+    def state_gradients(self):
+        return self.latent.state_gradients()
 
 
 class ConvLatentLevel(object):

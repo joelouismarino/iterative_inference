@@ -33,8 +33,9 @@ for epoch in range(1000):
     model.train()
     train(model, train_config, train_loader, epoch+1, handle_dict, (enc_opt, dec_opt))
     toc = time.time()
-    print 'Time: ' + str(toc - tic)
+    print 'Training Time: ' + str(toc - tic)
     # validation
+    tic = time.time()
     visualize = False
     eval = False
     if epoch % train_config['display_iter'] == train_config['display_iter']-1:
@@ -43,7 +44,11 @@ for epoch in range(1000):
     #    eval = True
     model.eval()
     _, averages, _ = run(model, train_config, val_loader, epoch+1, handle_dict, vis=visualize, eval=eval, label_names=label_names)
+    toc = time.time()
+    print 'Validation Time: ' + str(toc - tic)
+    print 'ELBO: ' + str(averages[0])
     save_env()
     # enc_scheduler.step(-averages[0])
     # dec_scheduler.step(-averages[0])
+
 
