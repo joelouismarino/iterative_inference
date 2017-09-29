@@ -4,8 +4,8 @@ import torch.optim as opt
 import numpy as np
 
 from util.logs import load_model_checkpoint
-from util.distributions import DiagonalGaussian, Bernoulli
-from util.modules import Dense, MultiLayerPerceptron, DenseGaussianVariable, DenseLatentLevel, RecurrentLatentLevel
+from distributions import DiagonalGaussian, Bernoulli
+from modules import Dense, MultiLayerPerceptron, DenseGaussianVariable, DenseLatentLevel, RecurrentLatentLevel
 
 
 def get_model(train_config, arch, data_loader):
@@ -265,18 +265,12 @@ class DenseLatentVariableModel(object):
                 input = input.cuda(self._cuda_device)
             input = self.process_input(input.view(-1, self.input_size))
 
-            if 'gradient' in self.encoding_form:
-                state_grads = self.state_gradients(input)
-                for level_num, latent_level in enumerate(self.levels):
-                    grads = torch.cat(state_grads[level_num], dim=1)
-                    latent_level.encode(grads)
-            else:
-                h = self.get_input_encoding(input)
-                for latent_level in self.levels:
-                    if self.concat_variables:
-                        h = torch.cat([h, latent_level.encode(h)], dim=1)
-                    else:
-                        h = latent_level.encode(h)
+            h = self.get_input_encoding(input)
+            for latent_level in self.levels:
+                if self.concat_variables:
+                    h = torch.cat([h, latent_level.encode(h)], dim=1)
+                else:
+                    h = latent_level.encode(h)
 
     def decode(self, generate=False):
         """
@@ -303,7 +297,7 @@ class DenseLatentVariableModel(object):
             if self.constant_variances:
                 self.output_dist.log_var = torch.clamp(self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1), -7., 15)
             else:
-                self.output_dist.log_var = torch.clamp(self.log_var_output(h), -15., 15)
+                self.output_dist.log_var = torch.clamp(self.log_var_output(h), -7., 15)
 
         self.reconstruction = 255. * self.output_dist.mean
         #self.reconstruction = self.process_output(self.output_dist.mean)

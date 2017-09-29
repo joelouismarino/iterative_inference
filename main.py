@@ -1,5 +1,5 @@
-from config import train_config, arch
-from models import get_model
+from cfg.config import train_config, arch
+from lib.models import get_model
 from util.data.load_data import load_data
 from util.misc import get_optimizers
 from util.train_val import train, run

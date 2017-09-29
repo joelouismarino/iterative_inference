@@ -404,9 +404,9 @@ class DenseGaussianVariable(object):
             mean_gate = self.posterior_mean_gate(input)
             if self.posterior_form == 'gaussian':
                 log_var_gate = self.posterior_log_var_gate(input)
-            mean = mean_gate * self.posterior.mean + (1 - mean_gate) * mean
+            mean = mean_gate * self.posterior.mean.detach() + (1 - mean_gate) * mean
             if self.posterior_form == 'gaussian':
-                log_var = torch.clamp(log_var_gate * self.posterior.log_var + (1 - log_var_gate) * log_var, -15., 15.)
+                log_var = torch.clamp(log_var_gate * self.posterior.log_var.detach() + (1 - log_var_gate) * log_var, -15., 15.)
         self.posterior.mean = mean
         self.posterior.mean.retain_grad()
         if self.posterior_form == 'gaussian':
@@ -666,8 +666,12 @@ class DenseLatentLevel(object):
         if 'var' in self.encoding_form and in_out == 'in':
             approx_post_var = torch.exp(self.latent.posterior.log_var.detach())
             encoding = approx_post_var if encoding is None else torch.cat((encoding, approx_post_var), 1)
+        if 'mean_gradient' in self.encoding_form and in_out == 'in':
+            encoding = self.state_gradients()[0] if encoding is None else torch.cat((encoding, self.state_gradients()[0]), 1)
+        if 'log_var_gradient' in self.encoding_form and in_out == 'in':
+            encoding = self.state_gradients()[1] if encoding is None else torch.cat((encoding, self.state_gradients()[1]), 1)
         if 'gradient' in self.encoding_form and in_out == 'in':
-            pass
+            encoding = torch.cat(self.state_gradients(), 1) if encoding is None else torch.cat([encoding] + self.state_gradients(), 1)
         return encoding
 
     def encode(self, input):

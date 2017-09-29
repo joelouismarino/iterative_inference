@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import cPickle as pickle
+import dill
 import torch
 from time import strftime
 
@@ -95,7 +96,7 @@ def log_vis(func):
 
 def save_checkpoint(model, opt, epoch):
     global log_path
-    torch.save(model, os.path.join(log_path, 'checkpoints', 'epoch_'+str(epoch)+'_model.ckpt'))
+    torch.save(model, os.path.join(log_path, 'checkpoints', 'epoch_'+str(epoch)+'_model.ckpt'), pickle_module=dill)
     torch.save(tuple(opt), os.path.join(log_path, 'checkpoints', 'epoch_'+str(epoch)+'_opt.ckpt'))
 
 

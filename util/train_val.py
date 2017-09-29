@@ -2,7 +2,7 @@ import torch
 from torch.autograd import Variable
 import numpy as np
 from random import shuffle
-from config import train_config, arch
+from cfg.config import train_config, arch
 
 from logs import log_train, log_vis
 from plotting import plot_images, plot_line, plot_train, plot_model_vis
@@ -23,7 +23,7 @@ def train_on_batch(model, batch, n_iterations, optimizers, train_enc=True, train
         model.decode()
         elbo = model.elbo(batch, averaged=True)
         (-elbo).backward(retain_graph=True)
-        if not train_config['average_gradient'] or arch['encoder_type'] == 'em':
+        if not train_config['average_gradient'] or arch['encoder_type'] in ['em', 'EM']:
             if train_enc:
                 enc_opt.step()
             enc_opt.zero_grad()
