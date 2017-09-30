@@ -1,7 +1,7 @@
 # training set-up
 train_config = {
-    'dataset': 'CIFAR_10',
-    'output_distribution': 'gaussian',
+    'dataset': 'MNIST',
+    'output_distribution': 'bernoulli',
     'batch_size': 64,
     'n_samples': 1,  # not yet implemented
     'n_iterations': 5,
@@ -34,16 +34,16 @@ arch = {
     'learn_top_prior': False,
     'top_size': 1,
 
-    'n_latent': [128],
+    'n_latent': [2],
 
     'n_det_enc': [0],
     'n_det_dec': [0],
 
-    'n_layers_enc': [3, 0],
-    'n_layers_dec': [1, 1],
+    'n_layers_enc': [2, 0],
+    'n_layers_dec': [2, 1],
 
-    'n_units_enc': [1024, 0],
-    'n_units_dec': [1024, 1],
+    'n_units_enc': [512, 0],
+    'n_units_dec': [512, 1],
 
     'non_linearity_enc': 'elu',
     'non_linearity_dec': 'elu',

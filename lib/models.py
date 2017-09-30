@@ -388,7 +388,7 @@ class DenseLatentVariableModel(object):
 
     def parameters(self):
         """Returns a list containing all parameters."""
-        return self.encoder_parameters() + self.decoder_parameters()
+        return self.encoder_parameters() + self.decoder_parameters() + self.state_parameters()
 
     def encoder_parameters(self):
         """Returns a list containing all parameters in the encoder."""

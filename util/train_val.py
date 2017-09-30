@@ -238,21 +238,38 @@ def run(model, train_config, data_loader, vis=False, eval=False):
             optimization_surface['elbo'] = np.zeros((batch_size, 200, 200))
             optimization_surface['kl'] = np.zeros((batch_size, 200, 200))
             optimization_surface['cond_log_like'] = np.zeros((batch_size, 200, 200))
-            optimization_surface['gradients'] = np.zeros((batch_size, 200, 200))
+            optimization_surface['gradients'] = np.zeros((batch_size, 2, 200, 200))
 
             batch = next(iter(data_loader))[0]
+            batch = Variable(batch)
+            if train_config['cuda_device'] is not None:
+                batch = batch.cuda(train_config['cuda_device'])
+
+            if model.output_distribution == 'bernoulli':
+                batch = 255. * torch.bernoulli(batch / 255.)
+            elif model.output_distribution == 'gaussian':
+                rand_values = torch.rand(tuple(batch.data.shape)) - 0.5
+                if train_config['cuda_device'] is not None:
+                    rand_values = Variable(rand_values.cuda(train_config['cuda_device']))
+                else:
+                    rand_values = Variable(rand_values)
+                batch = torch.clamp(batch + rand_values, 0., 255.)
+            model.trainable_state()
             for i_iter, i in enumerate(np.arange(-5, 5, 0.05)):
                 for j_iter, j in enumerate(np.arange(-5, 5, 0.05)):
                     # set the approximate posterior and evaluate the loss
                     mean = torch.cat((i * torch.ones(batch_size, 1), j * torch.ones(batch_size, 1)), dim=1)
-                    model.levels[0].latent.reset_mean(mean=mean)
+                    model.levels[0].latent.reset_mean(value=mean)
                     model.decode()
                     elbo, cond_log_like, kl = model.losses(batch)
-                    elbo.backward()
+                    elbo.mean(0).backward()
                     optimization_surface['elbo'][:, i_iter, j_iter] = elbo.data.cpu().numpy()
-                    optimization_surface['kl'][:, i_iter, j_iter] = kl.data.cpu().numpy()
+                    optimization_surface['kl'][:, i_iter, j_iter] = kl[0].data.cpu().numpy()
                     optimization_surface['cond_log_like'][:, i_iter, j_iter] = cond_log_like.data.cpu().numpy()
-                    optimization_surface['gradients'][:, i_iter, j_iter] = model.levels[0].latent.posterior.mean.grad.cpu().numpy()
+                    optimization_surface['gradients'][:, :, i_iter, j_iter] = model.levels[0].latent.posterior.mean.grad.data.cpu().numpy()
+                    for param in model.parameters():
+                        if param.grad is not None:
+                            param.grad.data.zero_()
 
     output_dict['total_elbo'] = total_elbo
     output_dict['total_cond_log_like'] = total_cond_log_like
