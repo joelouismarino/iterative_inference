@@ -432,21 +432,18 @@ class DenseGaussianVariable(object):
     def kl_divergence(self):
         return self.posterior.log_prob(self.posterior.sample()) - self.prior.log_prob(self.posterior.sample())
 
-    def reset(self, from_prior=True):
-        self.reset_mean(from_prior)
-        if self.posterior_form == 'gaussian':
-            self.reset_log_var(from_prior)
-
-    def reset_mean(self, from_prior=True):
-        value = None
+    def reset(self, mean=None, log_var=None, from_prior=True):
         if from_prior:
-            value = self.prior.mean.data
+            mean = self.prior.mean.data
+            log_var = self.prior.log_var.data
+        self.reset_mean(mean)
+        if self.posterior_form == 'gaussian':
+            self.reset_log_var(log_var)
+
+    def reset_mean(self, value):
         self.posterior.reset_mean(value)
 
-    def reset_log_var(self, from_prior=True):
-        value = None
-        if from_prior:
-            value = self.prior.log_var.data
+    def reset_log_var(self, value):
         self.posterior.reset_log_var(value)
 
     def trainable_mean(self):
@@ -695,8 +692,8 @@ class DenseLatentLevel(object):
     def kl_divergence(self):
         return self.latent.kl_divergence()
 
-    def reset(self, from_prior=True):
-        self.latent.reset(from_prior)
+    def reset(self, mean=None, log_var=None, from_prior=True):
+        self.latent.reset(mean=mean, log_var=log_var, from_prior=from_prior)
 
     def trainable_state(self):
         self.latent.trainable_mean()

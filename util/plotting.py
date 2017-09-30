@@ -234,14 +234,20 @@ def plot_metrics_over_iterations(metrics, epoch):
         update_trace(ave_kl, iterations, win=handle, name='KL Divergence, Level ' + str(level))
 
 
-def plot_recon_over_iterations(total_recon, epoch):
-    # todo: implement this function
-    pass
+def plot_errors_over_iterations(recon, data, epoch):
+    expanded_data = np.expand_dims(data, 1)
+    expanded_data = expanded_data.repeat(recon.shape[1], 1)
+    errors = expanded_data - recon
+    plot_images(errors.reshape([-1] + list(recon.shape[2:])), caption='Reconstruction Errors Over Iterations, Epoch ' + str(epoch))
 
 
-def plot_errors_over_iterations(total_recon, data, epoch):
-    # todo: implement this function
-    pass
+def plot_opt_lr(optimizers, epoch, handle_dict):
+    if optimizers[0] is not None:
+        update_trace(np.array([optimizers[0].param_groups[0]['lr']]), np.array([epoch]).astype(int),
+                     win=handle_dict['lr'], name='Encoder')
+    if optimizers[1] is not None:
+        update_trace(np.array([optimizers[1].param_groups[0]['lr']]), np.array([epoch]).astype(int),
+                     win=handle_dict['lr'], name='Decoder')
 
 
 def plot_latent_covariance_matrix(posterior_mean, epoch, level):
@@ -263,64 +269,60 @@ def plot_output_variance(cond_like, epoch, handle_dict):
 def plot_train(func):
     """Wrapper around training function to plot the outputs in corresponding visdom windows."""
     def plotting_func(model, train_config, data_loader, epoch, handle_dict, optimizers):
-        output = func(model, train_config, data_loader, epoch, optimizers)
-        plot_average_metrics(output[:-1], epoch, handle_dict, 'Train')
-        plot_grad_mags(output[-1], epoch, handle_dict)
-        if optimizers[0] is not None:
-            update_trace(np.array([optimizers[0].param_groups[0]['lr']]), np.array([epoch]).astype(int), win=handle_dict['lr'], name='Encoder')
-        if optimizers[1] is not None:
-            update_trace(np.array([optimizers[1].param_groups[0]['lr']]), np.array([epoch]).astype(int), win=handle_dict['lr'], name='Decoder')
-        return output, handle_dict
+        output_dict = func(model, train_config, data_loader, epoch, optimizers)
+        metrics = [output_dict['avg_elbo'], output_dict['avg_cond_log_like'], output_dict['avg_kl']]
+        plot_average_metrics(metrics, epoch, handle_dict, 'Train')
+        plot_grad_mags(output_dict['avg_grad_mags'], epoch, handle_dict)
+        plot_opt_lr(optimizers, epoch, handle_dict)
+        return output_dict, handle_dict
     return plotting_func
 
 
 def plot_model_vis(func):
     """Wrapper around run function to plot the outputs in corresponding visdom windows."""
     def plotting_func(model, train_config, data_loader, epoch, handle_dict, vis=False, eval=False, label_names=None):
-        output = func(model, train_config, data_loader, epoch, vis=vis, eval=eval)
-        total_elbo, total_cond_log_like, total_kl, total_log_like, total_labels, total_cond_like, total_recon, total_posterior, total_prior, samples = output
-
+        output_dict = func(model, train_config, data_loader, epoch, vis=vis, eval=eval)
         # plot average metrics on validation set
-        average_elbo = np.mean(total_elbo[:, -1], axis=0)
-        average_cond_log_like = np.mean(total_cond_log_like[:, -1], axis=0)
-        average_kl = [0. for _ in range(len(total_kl))]
-        for level in range(len(total_kl)):
-            average_kl[level] = np.mean(total_kl[level][:, -1], axis=0)
+        average_elbo = np.mean(output_dict['total_elbo'][:, -1], axis=0)
+        average_cond_log_like = np.mean(output_dict['total_cond_log_like'][:, -1], axis=0)
+        average_kl = [0. for _ in range(len(output_dict['total_kl']))]
+        for level in range(len(output_dict['total_kl'])):
+            average_kl[level] = np.mean(output_dict['total_kl'][level][:, -1], axis=0)
         averages = average_elbo, average_cond_log_like, average_kl
         plot_average_metrics(averages, epoch, handle_dict, 'Validation')
 
         # plot average improvement on metrics over iterations
         if train_config['n_iterations'] > 1:
-            plot_average_improvement([total_elbo, total_cond_log_like, total_kl], epoch, handle_dict)
+            plot_average_improvement([output_dict['total_elbo'], output_dict['total_cond_log_like'], output_dict['total_kl']], epoch, handle_dict)
 
         if vis:
             # plot reconstructions, samples
             batch_size = train_config['batch_size']
             data_shape = list(next(iter(data_loader))[0].size())[1:]
-            plot_images(total_recon[:batch_size, -1].reshape([batch_size]+data_shape), caption='Reconstructions, Epoch ' + str(epoch))
-            plot_images(samples.reshape([batch_size]+data_shape), caption='Samples, Epoch ' + str(epoch))
+            plot_images(output_dict['total_recon'][:batch_size, -1].reshape([batch_size]+data_shape), caption='Reconstructions, Epoch ' + str(epoch))
+            plot_images(output_dict['samples'].reshape([batch_size]+data_shape), caption='Samples, Epoch ' + str(epoch))
 
             if model.output_distribution == 'gaussian':
-                plot_output_variance(total_cond_like, epoch, handle_dict)
+                plot_output_variance(output_dict['total_cond_like'], epoch, handle_dict)
 
             # plot t-sne for each level's posterior (at first inference iteration)
-            #for level in range(len(total_posterior)):
-            #    plot_tsne(total_posterior[level][:, 1, 0], 1 + total_labels, title='T-SNE Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level), legend=label_names)
+            #for level in range(len(output_dict['total_posterior'])):
+            #    plot_tsne(output_dict['total_posterior'][level][:, 1, 0], 1 + output_dict['total_labels'], title='T-SNE Posterior Mean, Epoch ' + str(epoch) + ', Level ' + str(level), legend=label_names)
 
             # plot the covariance matrix for each level's posterior (at first inference iteration)
-            for level in range(len(total_posterior)):
-                plot_latent_covariance_matrix(total_posterior[level][:, 1, 0], epoch, level)
+            for level in range(len(output_dict['total_posterior'])):
+                plot_latent_covariance_matrix(output_dict['total_posterior'][level][:, 1, 0], epoch, level)
 
             if train_config['n_iterations'] > 1:
                 # plot ELBO, reconstruction loss, KL divergence over inference iterations
-                plot_metrics_over_iterations([total_elbo, total_cond_log_like, total_kl], epoch)
+                plot_metrics_over_iterations([output_dict['total_elbo'], output_dict['total_cond_log_like'], output_dict['total_kl']], epoch)
 
                 # plot reconstructions over inference iterations
-                plot_recon_over_iterations(total_recon, epoch)
+                plot_images(output_dict['total_recon'][:batch_size].reshape([-1]+data_shape), caption='Reconstructions Over Iterations, Epoch '+str(epoch))
 
                 # plot errors over inference iterations
-                plot_errors_over_iterations(total_recon, next(iter(data_loader)), epoch)
+                plot_errors_over_iterations(output_dict['total_recon'][:batch_size], next(iter(data_loader))[0].cpu().numpy(), epoch)
 
-        return output, averages, handle_dict
+        return output_dict, averages, handle_dict
     return plotting_func
 

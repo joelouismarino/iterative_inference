@@ -376,10 +376,10 @@ class DenseLatentVariableModel(object):
             state_grads[level_num] = latent_level.state_gradients()
         return state_grads
 
-    def reset_state(self):
+    def reset_state(self, mean=None, log_var=None, from_prior=True):
         """Resets the posterior estimate."""
         for latent_level in self.levels:
-            latent_level.reset()
+            latent_level.reset(mean=mean, log_var=log_var, from_prior=from_prior)
 
     def trainable_state(self):
         """Makes the posterior estimate trainable."""

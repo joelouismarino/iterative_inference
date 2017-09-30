@@ -16,8 +16,8 @@ Implementation of iterative inference in deep latent variable models
 
 
 # Visualization to-do
-- [ ] Visualize errors at the input level and reconstructions over inference iterations.
+- [x] Visualize errors at the input level and reconstructions over inference iterations.
 - [ ] Latent traversal of lowest variance dimensions.
 - [ ] Plot number of inactive units.
-- [ ] 2D latent visualization.
+- [x] 2D latent visualization.
 

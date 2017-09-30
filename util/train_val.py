@@ -10,6 +10,8 @@ from plotting import plot_images, plot_line, plot_train, plot_model_vis
 
 def train_on_batch(model, batch, n_iterations, optimizers, train_enc=True, train_dec=True):
 
+    output_dict = dict()
+
     enc_opt, dec_opt = optimizers
 
     # initialize the model from the prior
@@ -58,6 +60,7 @@ def train_on_batch(model, batch, n_iterations, optimizers, train_enc=True, train
         grad_mags[level_num, :] = np.array([encoder_grad_mag, decoder_grad_mag])
     output_decoder_grad_mag = ave_grad_mag(model.output_decoder.parameters())
     grad_mags[-1, :] = np.array([0., output_decoder_grad_mag])
+    output_dict['grad_mags'] = grad_mags
 
     # update parameters
     if train_enc:
@@ -65,16 +68,19 @@ def train_on_batch(model, batch, n_iterations, optimizers, train_enc=True, train
     if train_dec:
         dec_opt.step()
 
-    elbo = elbo.data.cpu().numpy()[0]
-    cond_log_like = cond_log_like.data.cpu().numpy()[0]
+    output_dict['elbo'] = elbo.data.cpu().numpy()[0]
+    output_dict['cond_log_like'] = cond_log_like.data.cpu().numpy()[0]
     for level in range(len(kl)):
         kl[level] = kl[level].data.cpu().numpy()[0]
+    output_dict['kl'] = kl
 
-    return elbo, cond_log_like, kl, grad_mags
+    return output_dict
 
 
 def run_on_batch(model, batch, n_iterations, vis=False):
     """Runs the model on a single batch. If visualizing, stores posteriors, priors, and output distributions."""
+
+    output_dict = dict()
 
     batch_shape = list(batch.size())
     total_elbo = np.zeros((batch.size()[0], n_iterations+1))
@@ -133,7 +139,15 @@ def run_on_batch(model, batch, n_iterations, vis=False):
                 prior[level][:, i, 0, :] = model.levels[level].latent.prior.mean.data.cpu().numpy()
                 prior[level][:, i, 1, :] = model.levels[level].latent.prior.log_var.data.cpu().numpy()
 
-    return total_elbo, total_cond_log_like, total_kl, cond_like, reconstructions, posterior, prior
+    output_dict['total_elbo'] = total_elbo
+    output_dict['total_cond_log_like'] = total_cond_log_like
+    output_dict['total_kl'] = total_kl
+    output_dict['cond_like'] = cond_like
+    output_dict['reconstructions'] = reconstructions
+    output_dict['posterior'] = posterior
+    output_dict['prior'] = prior
+
+    return output_dict
 
 
 def eval_on_batch(model, batch, n_importance_samples):
@@ -155,6 +169,8 @@ def eval_on_batch(model, batch, n_importance_samples):
 @log_vis
 def run(model, train_config, data_loader, vis=False, eval=False):
     """Runs the model on a set of data."""
+
+    output_dict = dict()
 
     batch_size = train_config['batch_size']
     n_iterations = train_config['n_iterations']
@@ -188,38 +204,76 @@ def run(model, train_config, data_loader, vis=False, eval=False):
                 rand_values = Variable(rand_values)
             batch = torch.clamp(batch + rand_values, 0., 255.)
 
-        elbo, cond_log_like, kl, cond_like, recon, posterior, prior = run_on_batch(model, batch, n_iterations, vis)
+        batch_output = run_on_batch(model, batch, n_iterations, vis)
 
         data_index = batch_index * batch_size
-        total_elbo[data_index:data_index + batch_size, :] = elbo
-        total_cond_log_like[data_index:data_index + batch_size, :] = cond_log_like
+        total_elbo[data_index:data_index + batch_size, :] = batch_output['total_elbo']
+        total_cond_log_like[data_index:data_index + batch_size, :] = batch_output['total_cond_log_like']
         for level in range(len(model.levels)):
-            total_kl[level][data_index:data_index + batch_size, :] = kl[level]
+            total_kl[level][data_index:data_index + batch_size, :] = batch_output['total_kl'][level]
 
         total_labels[data_index:data_index + batch_size] = labels.numpy()
 
         if vis:
-            total_cond_like[data_index:data_index + batch_size] = cond_like
-            total_recon[data_index:data_index + batch_size] = recon
+            total_cond_like[data_index:data_index + batch_size] = batch_output['cond_like']
+            total_recon[data_index:data_index + batch_size] = batch_output['reconstructions']
             for level in range(len(model.levels)):
-                total_posterior[level][data_index:data_index + batch_size] = posterior[level]
-                total_prior[level][data_index:data_index + batch_size] = prior[level]
+                total_posterior[level][data_index:data_index + batch_size] = batch_output['posterior'][level]
+                total_prior[level][data_index:data_index + batch_size] = batch_output['prior'][level]
 
         if eval:
             total_log_like[data_index:data_index + batch_size] = eval_on_batch(model, batch, 5000)
 
     samples = None
+    optimization_surface = None
     if vis:
         # visualize samples from the model
         model.decode(generate=True)
         samples = model.reconstruction.data.cpu().numpy().reshape([batch_size]+data_shape)
 
-    return total_elbo, total_cond_log_like, total_kl, total_log_like, total_labels, total_cond_like, total_recon, total_posterior, total_prior, samples
+        # visualize the latent optimization surface
+        if arch['n_latent'][0] == 2 and len(arch['n_latent']) == 1:
+            print 'Visualizing latent space...'
+            optimization_surface = dict()
+            optimization_surface['elbo'] = np.zeros((batch_size, 200, 200))
+            optimization_surface['kl'] = np.zeros((batch_size, 200, 200))
+            optimization_surface['cond_log_like'] = np.zeros((batch_size, 200, 200))
+            optimization_surface['gradients'] = np.zeros((batch_size, 200, 200))
+
+            batch = next(iter(data_loader))[0]
+            for i_iter, i in enumerate(np.arange(-5, 5, 0.05)):
+                for j_iter, j in enumerate(np.arange(-5, 5, 0.05)):
+                    # set the approximate posterior and evaluate the loss
+                    mean = torch.cat((i * torch.ones(batch_size, 1), j * torch.ones(batch_size, 1)), dim=1)
+                    model.levels[0].latent.reset_mean(mean=mean)
+                    model.decode()
+                    elbo, cond_log_like, kl = model.losses(batch)
+                    elbo.backward()
+                    optimization_surface['elbo'][:, i_iter, j_iter] = elbo.data.cpu().numpy()
+                    optimization_surface['kl'][:, i_iter, j_iter] = kl.data.cpu().numpy()
+                    optimization_surface['cond_log_like'][:, i_iter, j_iter] = cond_log_like.data.cpu().numpy()
+                    optimization_surface['gradients'][:, i_iter, j_iter] = model.levels[0].latent.posterior.mean.grad.cpu().numpy()
+
+    output_dict['total_elbo'] = total_elbo
+    output_dict['total_cond_log_like'] = total_cond_log_like
+    output_dict['total_kl'] = total_kl
+    output_dict['total_log_like'] = total_log_like
+    output_dict['total_labels'] = total_labels
+    output_dict['total_cond_like'] = total_cond_like
+    output_dict['total_recon'] = total_recon
+    output_dict['total_posterior'] = total_posterior
+    output_dict['total_prior'] = total_prior
+    output_dict['samples'] = samples
+    output_dict['optimization_surface'] = optimization_surface
+
+    return output_dict
 
 
 @plot_train
 @log_train
 def train(model, train_config, data_loader, optimizers):
+
+    output_dict = dict()
 
     avg_elbo = []
     avg_cond_log_like = []
@@ -245,15 +299,20 @@ def train(model, train_config, data_loader, optimizers):
         for _ in range(train_config['encoder_decoder_train_multiple']-1):
             train_on_batch(model, batch, train_config['n_iterations'], optimizers, train_enc=True, train_dec=False)
 
-        elbo, cond_log_like, kl, grad_mags = train_on_batch(model, batch, train_config['n_iterations'], optimizers)
+        batch_output = train_on_batch(model, batch, train_config['n_iterations'], optimizers)
 
-        avg_elbo.append(elbo)
-        avg_cond_log_like.append(cond_log_like)
+        avg_elbo.append(batch_output['elbo'])
+        avg_cond_log_like.append(batch_output['cond_log_like'])
         for l in range(len(avg_kl)):
-            avg_kl[l].append(kl[l])
-        avg_grad_mags += grad_mags
+            avg_kl[l].append(batch_output['kl'][l])
+        avg_grad_mags += batch_output['grad_mags']
 
     if np.isnan(np.sum(avg_elbo)):
         raise Exception('Nan encountered during training.')
 
-    return np.mean(avg_elbo), np.mean(avg_cond_log_like), [np.mean(avg_kl[l]) for l in range(len(model.levels))], avg_grad_mags/len(iter(data_loader))
+    output_dict['avg_elbo'] = np.mean(avg_elbo)
+    output_dict['avg_cond_log_like'] = np.mean(avg_cond_log_like)
+    output_dict['avg_kl'] = [np.mean(avg_kl[l]) for l in range(len(model.levels))]
+    output_dict['avg_grad_mags'] = avg_grad_mags/len(iter(data_loader))
+
+    return output_dict

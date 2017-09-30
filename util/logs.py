@@ -4,6 +4,7 @@ import cPickle as pickle
 import dill
 import torch
 from time import strftime
+from cfg.config import arch
 
 global log_path
 
@@ -43,13 +44,12 @@ def log_train(func):
     global log_path
 
     def log_func(model, train_config, data, epoch, optimizers):
-        output = func(model, train_config, data, optimizers)
-        avg_elbo, avg_cond_log_like, avg_kl, avg_grad_mags = output
-        update_metric(os.path.join(log_path, 'metrics', 'train_elbo.p'), (epoch, avg_elbo))
-        update_metric(os.path.join(log_path, 'metrics', 'train_cond_log_like.p'), (epoch, avg_cond_log_like))
+        output_dict = func(model, train_config, data, optimizers)
+        update_metric(os.path.join(log_path, 'metrics', 'train_elbo.p'), (epoch, output_dict['avg_elbo']))
+        update_metric(os.path.join(log_path, 'metrics', 'train_cond_log_like.p'), (epoch, output_dict['avg_cond_log_like']))
         for level in range(len(model.levels)):
-            update_metric(os.path.join(log_path, 'metrics', 'train_kl_level_' + str(level) + '.p'), (epoch, avg_kl[level]))
-        return output
+            update_metric(os.path.join(log_path, 'metrics', 'train_kl_level_' + str(level) + '.p'), (epoch, output_dict['avg_kl'][level]))
+        return output_dict
 
     return log_func
 
@@ -59,12 +59,11 @@ def log_vis(func):
     global log_path
 
     def log_func(model, train_config, data_loader, epoch, vis=False, eval=False):
-        output = func(model, train_config, data_loader, vis=vis, eval=eval)
-        total_elbo, total_cond_log_like, total_kl, total_log_like, total_labels, total_cond_like, total_recon, total_posterior, total_prior, samples = output
-        update_metric(os.path.join(log_path, 'metrics', 'val_elbo.p'), (epoch, np.mean(total_elbo[:, -1], axis=0)))
-        update_metric(os.path.join(log_path, 'metrics', 'val_cond_log_like.p'), (epoch, np.mean(total_cond_log_like[:, -1], axis=0)))
+        output_dict = func(model, train_config, data_loader, vis=vis, eval=eval)
+        update_metric(os.path.join(log_path, 'metrics', 'val_elbo.p'), (epoch, np.mean(output_dict['total_elbo'][:, -1], axis=0)))
+        update_metric(os.path.join(log_path, 'metrics', 'val_cond_log_like.p'), (epoch, np.mean(output_dict['total_cond_log_like'][:, -1], axis=0)))
         for level in range(len(model.levels)):
-            update_metric(os.path.join(log_path, 'metrics', 'val_kl_level_' + str(level) + '.p'), (epoch, np.mean(total_kl[level][:, -1], axis=0)))
+            update_metric(os.path.join(log_path, 'metrics', 'val_kl_level_' + str(level) + '.p'), (epoch, np.mean(output_dict['total_kl'][level][:, -1], axis=0)))
 
         if vis:
             epoch_path = os.path.join(log_path, 'visualizations', 'epoch_' + str(epoch))
@@ -74,22 +73,25 @@ def log_vis(func):
             n_iterations = train_config['n_iterations']
             data_shape = list(next(iter(data_loader))[0].size())[1:]
 
-            pickle.dump(total_elbo[:batch_size], open(os.path.join(epoch_path, 'elbo.p'), 'w'))
-            pickle.dump(total_cond_log_like[:batch_size], open(os.path.join(epoch_path, 'cond_log_like.p'), 'w'))
+            pickle.dump(output_dict['total_elbo'][:batch_size], open(os.path.join(epoch_path, 'elbo.p'), 'w'))
+            pickle.dump(output_dict['total_cond_log_like'][:batch_size], open(os.path.join(epoch_path, 'cond_log_like.p'), 'w'))
             for level in range(len(model.levels)):
-                pickle.dump(total_kl[level][:batch_size], open(os.path.join(epoch_path, 'kl_level_' + str(level) + '.p'), 'w'))
+                pickle.dump(output_dict['total_kl'][level][:batch_size], open(os.path.join(epoch_path, 'kl_level_' + str(level) + '.p'), 'w'))
 
-            recon = total_recon[:batch_size, :].reshape([batch_size, n_iterations+1]+data_shape)
+            recon = output_dict['total_recon'][:batch_size, :].reshape([batch_size, n_iterations+1]+data_shape)
             pickle.dump(recon, open(os.path.join(epoch_path, 'reconstructions.p'), 'w'))
 
-            samples = samples.reshape([batch_size]+data_shape)
+            samples = output_dict['samples'].reshape([batch_size]+data_shape)
             pickle.dump(samples, open(os.path.join(epoch_path, 'samples.p'), 'w'))
+
+            if arch['n_latent'][0] == 2 and len(arch['n_latent']) == 1:
+                pickle.dump(output_dict['optimization_surface'], open(os.path.join(epoch_path, 'optimization_surface.p'), 'w'))
 
         if eval:
             pass
             # todo: save log likelihood estimate
 
-        return output
+        return output_dict
 
     return log_func
 

@@ -7,13 +7,13 @@ train_config = {
     'n_iterations': 5,
     'encoder_optimizer': 'adam',
     'decoder_optimizer': 'adam',
-    'encoder_learning_rate': 0.0002 / 5,
+    'encoder_learning_rate': 0.0002,
     'decoder_learning_rate': 0.0002,
-    'average_gradient': False,
+    'average_gradient': True,
     'encoder_decoder_train_multiple': 1,
     'kl_min': 0,
     'cuda_device': 1,
-    'display_iter': 10,
+    'display_iter': 1,
     'resume_experiment': None
 }
 
