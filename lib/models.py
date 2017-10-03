@@ -137,34 +137,45 @@ class DenseLatentVariableModel(object):
 
         def _encoding_size(_self, _level_num, _arch, lower_level=False):
 
-            if 'gradient' in self.encoding_form:
-                encoding_size = _arch['n_latent'][_level_num]
-                if self.posterior_form == 'gaussian':
-                    encoding_size *= 2
+            if _level_num == 0:
+                latent_size = _self.input_size
+                det_size = 0
             else:
-                if _level_num == 0:
-                    latent_size = _self.input_size
-                    det_size = 0
-                else:
-                    latent_size = _arch['n_latent'][_level_num-1]
-                    det_size = _arch['n_det_enc'][_level_num-1]
-                encoding_size = det_size
+                latent_size = _arch['n_latent'][_level_num-1]
+                det_size = _arch['n_det_enc'][_level_num-1]
+            encoding_size = det_size
 
-                if 'posterior' in _self.encoding_form:
-                    encoding_size += latent_size
-                if 'mean' in _self.encoding_form and not lower_level:
+            if 'posterior' in _self.encoding_form:
+                encoding_size += latent_size
+            if 'mean' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'log_var' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'var' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'bottom_error' in _self.encoding_form:
+                encoding_size += latent_size
+            if 'bottom_norm_error' in _self.encoding_form:
+                encoding_size += latent_size
+            if 'top_error' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'top_norm_error' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'gradient' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+                if self.posterior_form == 'gaussian':
                     encoding_size += _arch['n_latent'][_level_num]
-                if 'log_var' in _self.encoding_form and not lower_level:
+            if 'log_gradient' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+                if self.posterior_form == 'gaussian':
                     encoding_size += _arch['n_latent'][_level_num]
-                if 'var' in _self.encoding_form and not lower_level:
+            if 'scaled_log_gradient' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+                if self.posterior_form == 'gaussian':
                     encoding_size += _arch['n_latent'][_level_num]
-                if 'bottom_error' in _self.encoding_form:
-                    encoding_size += latent_size
-                if 'bottom_norm_error' in _self.encoding_form:
-                    encoding_size += latent_size
-                if 'top_error' in _self.encoding_form and not lower_level:
-                    encoding_size += _arch['n_latent'][_level_num]
-                if 'top_norm_error' in _self.encoding_form and not lower_level:
+            if 'sign_gradient' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+                if self.posterior_form == 'gaussian':
                     encoding_size += _arch['n_latent'][_level_num]
 
             return encoding_size
@@ -385,6 +396,11 @@ class DenseLatentVariableModel(object):
         """Makes the posterior estimate trainable."""
         for latent_level in self.levels:
             latent_level.trainable_state()
+
+    def not_trainable_state(self):
+        """Makes the posterior estimate not trainable."""
+        for latent_level in self.levels:
+            latent_level.not_trainable_state()
 
     def parameters(self):
         """Returns a list containing all parameters."""

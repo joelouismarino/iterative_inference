@@ -75,8 +75,7 @@ class DiagonalGaussian(object):
         mean = value if value is not None else torch.zeros(self.mean.size())
         if self._cuda_device is not None:
             mean = mean.cuda(self._cuda_device)
-        mean = Variable(mean, requires_grad=self.mean.requires_grad)
-        self.mean = mean
+        self.mean = Variable(mean, requires_grad=True)
         self._sample = None
 
     def reset_log_var(self, value=None):
@@ -84,17 +83,22 @@ class DiagonalGaussian(object):
         log_var = value if value is not None else torch.zeros(self.log_var.size())
         if self._cuda_device is not None:
             log_var = log_var.cuda(self._cuda_device)
-        log_var = Variable(log_var, requires_grad=self.log_var.requires_grad)
-        self.log_var = log_var
+        self.log_var = Variable(log_var, requires_grad=True)
         self._sample = None
 
     def mean_trainable(self):
         assert self.mean is not None, 'Mean is None.'
-        self.mean = Variable(self.mean.data, requires_grad=True)
+        self.mean = Variable(self.mean.data.clone(), requires_grad=True)
 
     def log_var_trainable(self):
         assert self.log_var is not None, 'Log variance is None.'
-        self.log_var = Variable(self.log_var.data, requires_grad=True)
+        self.log_var = Variable(self.log_var.data.clone(), requires_grad=True)
+
+    def mean_not_trainable(self):
+        self.mean.requires_grad = False
+
+    def log_var_not_trainable(self):
+        self.log_var.requires_grad = False
 
     def state_parameters(self):
         return self.mean, self.log_var

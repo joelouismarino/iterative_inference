@@ -13,13 +13,25 @@ def train_on_batch(model, batch, n_iterations, optimizers, train_enc=True, train
     output_dict = dict()
 
     enc_opt, dec_opt = optimizers
-
-    # initialize the model from the prior
+    # initialize the posterior estimate from the prior
     enc_opt.zero_grad()
     model.decode(generate=True)
     model.reset_state()
 
+    if 'gradient' in arch['encoding_form']\
+            or 'log_gradient' in arch['encoding_form']\
+            or 'scaled_log_gradient' in arch['encoding_form']\
+            or 'sign_gradient' in arch['encoding_form']:
+        # initialize state gradients
+        model.decode()
+        elbo = model.elbo(batch, averaged=True)
+        (-elbo).backward(retain_graph=True)
+
+    model.not_trainable_state()
     # inference iterations
+
+    #import ipdb; ipdb.set_trace()
+
     for _ in range(n_iterations - 1):
         model.encode(batch)
         model.decode()
@@ -101,6 +113,8 @@ def run_on_batch(model, batch, n_iterations, vis=False):
     model.reset_state()
     elbo, cond_log_like, kl = model.losses(batch)
 
+
+
     total_elbo[:, 0] = elbo.data.cpu().numpy()
     total_cond_log_like[:, 0] = cond_log_like.data.cpu().numpy()
     for level in range(len(kl)):
@@ -118,11 +132,27 @@ def run_on_batch(model, batch, n_iterations, vis=False):
             prior[level][:, 0, 0, :] = model.levels[level].latent.prior.mean.data.cpu().numpy()
             prior[level][:, 0, 1, :] = model.levels[level].latent.prior.log_var.data.cpu().numpy()
 
+    if 'gradient' in arch['encoding_form'] \
+            or 'log_gradient' in arch['encoding_form'] \
+            or 'scaled_log_gradient' in arch['encoding_form'] \
+            or 'sign_gradient' in arch['encoding_form']:
+        # initialize state gradients
+        model.decode()
+        elbo = model.elbo(batch, averaged=True)
+        (-elbo).backward(retain_graph=True)
+
+    model.not_trainable_state()
+
     # inference iterations
     for i in range(1, n_iterations+1):
         model.encode(batch)
         model.decode()
         elbo, cond_log_like, kl = model.losses(batch)
+        if 'gradient' in arch['encoding_form'] \
+                or 'log_gradient' in arch['encoding_form'] \
+                or 'scaled_log_gradient' in arch['encoding_form'] \
+                or 'sign_gradient' in arch['encoding_form']:
+            (-elbo.mean(0)).backward(retain_graph=True)
         total_elbo[:, i] = elbo.data.cpu().numpy()
         total_cond_log_like[:, i] = cond_log_like.data.cpu().numpy()
         for level in range(len(kl)):
@@ -296,7 +326,6 @@ def train(model, train_config, data_loader, optimizers):
     avg_cond_log_like = []
     avg_kl = [[] for _ in range(len(model.levels))]
     avg_grad_mags = np.zeros((len(model.levels) + 1, 2))
-
     for batch, _ in data_loader:
         if train_config['cuda_device'] is not None:
             batch = Variable(batch.cuda(train_config['cuda_device']))

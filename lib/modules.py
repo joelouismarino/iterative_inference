@@ -420,7 +420,17 @@ class DenseGaussianVariable(object):
             self.prior.mean = self.prior_mean(input)
             if self.prior_log_var is not None:
                 self.prior.log_var = self.prior_log_var(input)
-        sample = self.prior.sample(resample=True) if generate else self.posterior.sample(resample=True)
+        if generate:
+            sample = self.prior.sample(resample=True)
+        else:
+            #temp_mean = 1.0 * self.posterior.mean
+            #temp_mean.requires_grad = True
+            #self.posterior.mean = temp_mean
+            #if self.posterior_form == 'gaussian':
+            #    temp_log_var = 1.0 * self.posterior.log_var
+            #    temp_log_var.requires_grad = True
+            #    self.posterior.log_var = temp_log_var
+            sample = self.posterior.sample(resample=True)
         return sample
 
     def error(self):
@@ -434,8 +444,8 @@ class DenseGaussianVariable(object):
 
     def reset(self, mean=None, log_var=None, from_prior=True):
         if from_prior:
-            mean = self.prior.mean.data
-            log_var = self.prior.log_var.data
+            mean = self.prior.mean.data.clone()
+            log_var = self.prior.log_var.data.clone()
         self.reset_mean(mean)
         if self.posterior_form == 'gaussian':
             self.reset_log_var(log_var)
@@ -451,6 +461,12 @@ class DenseGaussianVariable(object):
 
     def trainable_log_var(self):
         self.posterior.log_var_trainable()
+
+    def not_trainable_mean(self):
+        self.posterior.mean_not_trainable()
+
+    def not_trainable_log_var(self):
+        self.posterior.log_var_not_trainable()
 
     def eval(self):
         if self.learn_prior:
@@ -522,9 +538,12 @@ class DenseGaussianVariable(object):
         return self.posterior.state_parameters()
 
     def state_gradients(self):
-        grads = [self.posterior.mean.grad]
+        assert self.posterior.mean.grad is not None, 'State gradients are None.'
+        grads = [self.posterior.mean.grad.detach()]
         if self.posterior_form == 'gaussian':
-            grads += [self.posterior.log_var.grad]
+            grads += [self.posterior.log_var.grad.detach()]
+        for grad in grads:
+            grad.volatile = False
         return grads
 
 
@@ -669,6 +688,15 @@ class DenseLatentLevel(object):
             encoding = self.state_gradients()[1] if encoding is None else torch.cat((encoding, self.state_gradients()[1]), 1)
         if 'gradient' in self.encoding_form and in_out == 'in':
             encoding = torch.cat(self.state_gradients(), 1) if encoding is None else torch.cat([encoding] + self.state_gradients(), 1)
+        if 'log_gradient' in self.encoding_form and in_out == 'in':
+            log_grads = torch.log(torch.cat(self.state_gradients(), 1).abs() + 1e-5)
+            encoding = log_grads if encoding is None else torch.cat((encoding, log_grads), 1)
+        if 'scaled_log_gradient' in self.encoding_form and in_out == 'in':
+            log_grads = torch.clamp(torch.log(torch.cat(self.state_gradients(), 1).abs() + 1e-5) / 10., min=-1.)
+            encoding = log_grads if encoding is None else torch.cat((encoding, log_grads), 1)
+        if 'sign_gradient' in self.encoding_form and in_out == 'in':
+            sign_grad = torch.sign(torch.cat(self.state_gradients(), 1))
+            encoding = sign_grad if encoding is None else torch.cat((encoding, sign_grad), 1)
         return encoding
 
     def encode(self, input):
@@ -697,7 +725,13 @@ class DenseLatentLevel(object):
 
     def trainable_state(self):
         self.latent.trainable_mean()
-        self.latent.trainable_log_var()
+        if self.latent.posterior_form == 'gaussian':
+            self.latent.trainable_log_var()
+
+    def not_trainable_state(self):
+        self.latent.not_trainable_mean()
+        if self.latent.posterior_form == 'gaussian':
+            self.latent.not_trainable_log_var()
 
     def eval(self):
         self.encoder.eval()

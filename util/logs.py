@@ -71,13 +71,20 @@ def log_vis(func):
 
             batch_size = train_config['batch_size']
             n_iterations = train_config['n_iterations']
-            data_shape = list(next(iter(data_loader))[0].size())[1:]
+            batch, labels = next(iter(data_loader))
+            if epoch == train_config['display_iter']:
+                # save the data on the first display iteration
+                pickle.dump(batch.numpy(), open(os.path.join(log_path, 'visualizations', 'batch_data.p'), 'w'))
+                pickle.dump(labels.numpy(), open(os.path.join(log_path, 'visualizations', 'batch_labels.p'), 'w'))
+            data_shape = list(batch.size())[1:]
 
             pickle.dump(output_dict['total_elbo'][:batch_size], open(os.path.join(epoch_path, 'elbo.p'), 'w'))
             pickle.dump(output_dict['total_cond_log_like'][:batch_size], open(os.path.join(epoch_path, 'cond_log_like.p'), 'w'))
             for level in range(len(model.levels)):
                 pickle.dump(output_dict['total_kl'][level][:batch_size], open(os.path.join(epoch_path, 'kl_level_' + str(level) + '.p'), 'w'))
 
+            pickle.dump(output_dict['total_posterior'][:batch_size], open(os.path.join(epoch_path, 'posterior.p'), 'w'))
+            pickle.dump(output_dict['total_prior'][:batch_size], open(os.path.join(epoch_path, 'prior.p'), 'w'))
             recon = output_dict['total_recon'][:batch_size, :].reshape([batch_size, n_iterations+1]+data_shape)
             pickle.dump(recon, open(os.path.join(epoch_path, 'reconstructions.p'), 'w'))
 
