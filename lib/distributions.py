@@ -25,13 +25,15 @@ class PointEstimate(object):
         mean = value if value is not None else torch.zeros(self.mean.size())
         if self._cuda_device is not None:
             mean = mean.cuda(self._cuda_device)
-        mean = Variable(mean, requires_grad=self.mean.requires_grad)
-        self.mean = mean
+        self.mean = Variable(mean, requires_grad=True)
         self._sample = None
 
     def mean_trainable(self):
         assert self.mean is not None, 'Mean is None.'
         self.mean = Variable(self.mean.data, requires_grad=True)
+
+    def mean_not_trainable(self):
+        self.mean.requires_grad = False
 
     def state_parameters(self):
         return self.mean
@@ -68,7 +70,7 @@ class DiagonalGaussian(object):
         if sample is None:
             sample = self.sample()
         assert self.mean is not None and self.log_var is not None, 'Mean or log variance are None.'
-        return -0.5 * (self.log_var + np.log(2 * np.pi) + torch.pow(sample - self.mean, 2) / (torch.exp(self.log_var) + 1e-7))
+        return -0.5 * (self.log_var + np.log(2 * np.pi) + torch.pow(sample - self.mean, 2) / (torch.exp(self.log_var) + 1e-5))
 
     def reset_mean(self, value=None):
         assert self.mean is not None or value is not None, 'Mean is None.'

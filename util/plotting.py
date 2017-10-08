@@ -31,27 +31,51 @@ def initialize_plots(train_config, arch):
             kl_legend.append(mode + ', Level ' + str(level))
     kl_nans = np.zeros((1, 2 * len(arch['n_latent'])))
     kl_nans.fill(np.nan)
-    elbo_handle = plot_line(nans, np.ones((1, 2)), legend=['Train', 'Validation'], title='ELBO', xlabel='Epochs', ylabel='-ELBO (Nats)', xformat='log', yformat='log')
-    cond_log_like_handle = plot_line(nans, np.ones((1, 2)), legend=['Train', 'Validation'], title='Conditional Log Likelihood', xlabel='Epochs', ylabel='-log P(x | z) (Nats)', xformat='log', yformat='log')
-    kl_handle = plot_line(kl_nans, np.ones((1, 2 * len(arch['n_latent']))), legend=kl_legend, title='KL Divergence', xlabel='Epochs', ylabel='KL(q || p) (Nats)', xformat='log', yformat='log')
+    elbo_handle = plot_line(nans, np.ones((1, 2)), legend=['Train', 'Validation'], title='ELBO', xlabel='Epochs',
+                            ylabel='-ELBO (Nats)', xformat='log', yformat='log')
+    cond_log_like_handle = plot_line(nans, np.ones((1, 2)), legend=['Train', 'Validation'],
+                                     title='Conditional Log Likelihood', xlabel='Epochs', ylabel='-log P(x | z) (Nats)',
+                                     xformat='log', yformat='log')
+    kl_handle = plot_line(kl_nans, np.ones((1, 2 * len(arch['n_latent']))), legend=kl_legend, title='KL Divergence',
+                          xlabel='Epochs', ylabel='KL(q || p) (Nats)', xformat='log', yformat='log')
 
-    lr_handle = plot_line(nans, np.ones((1, 2)), legend=['Encoder', 'Decoder'], title='Learning Rates', xlabel='Epochs', ylabel='Learning Rate', xformat='log', yformat='log')
+    lr_handle = plot_line(nans, np.ones((1, 2)), legend=['Encoder', 'Decoder'], title='Learning Rates', xlabel='Epochs',
+                          ylabel='Learning Rate', xformat='log', yformat='log')
 
     output_log_var_handle = None
     if train_config['output_distribution'] == 'gaussian':
-        output_log_var_handle = plot_line(np.array(np.nan).reshape(1), np.ones(1), legend=['Validation'], title='Average Output Log Variance', xlabel='Epochs', ylabel='Ave. Log Variance', xformat='log')
+        output_log_var_handle = plot_line(np.array(np.nan).reshape(1), np.ones(1), legend=['Validation'],
+                                          title='Average Output Log Variance', xlabel='Epochs',
+                                          ylabel='Ave. Log Variance', xformat='log')
 
-    # plot for average gradient magnitudes
-    grad_mag_legend=[]
+    # plot for average parameter gradient magnitudes
+    param_grad_mag_legend=[]
     for name in ['Encoder', 'Decoder']:
         for level in range(len(arch['n_latent'])):
-            grad_mag_legend.append(name + ', Level ' + str(level))
-    grad_mag_legend.append('Decoder, Output')
+            param_grad_mag_legend.append(name + ', Level ' + str(level))
+    param_grad_mag_legend.append('Decoder, Output')
     nans = np.zeros((1, 2 * len(arch['n_latent']) + 1))
     nans.fill(np.nan)
-    grad_mag_handle = plot_line(nans, np.ones((1, 2 * len(arch['n_latent']) + 1)), legend=grad_mag_legend, title='Average Gradient Magnitudes', xlabel='Epochs', ylabel='Gradient Magnitude', xformat='log')
+    param_grad_mag_handle = plot_line(nans, np.ones((1, 2 * len(arch['n_latent']) + 1)), legend=param_grad_mag_legend,
+                                      title='Average Parameter Gradient Magnitudes', xlabel='Epochs',
+                                      ylabel='Param. Gradient Magnitude', xformat='log')
 
-    handle_dict = dict(elbo=elbo_handle, cond_log_like=cond_log_like_handle, kl=kl_handle, lr=lr_handle, grad_mags=grad_mag_handle, output_log_var=output_log_var_handle)
+    # plot for average parameter gradient magnitudes
+    state_grad_mag_legend=[]
+    for name in ['Mean', 'Log Variance']:
+        for level in range(len(arch['n_latent'])):
+            for it in range(train_config['n_iterations']):
+                state_grad_mag_legend.append(name + ', Level ' + str(level) + ', Iter. ' + str(it))
+    nans = np.zeros((1, 2 * len(arch['n_latent'] * train_config['n_iterations'])))
+    nans.fill(np.nan)
+    state_grad_mag_handle = plot_line(nans, np.ones((1, 2 * len(arch['n_latent']) * train_config['n_iterations'])),
+                                      legend=state_grad_mag_legend, title='Average State Gradient Magnitudes',
+                                      xlabel='Epochs', ylabel='State Gradient Magnitude', xformat='log')
+
+
+    handle_dict = dict(elbo=elbo_handle, cond_log_like=cond_log_like_handle, kl=kl_handle, lr=lr_handle,
+                       param_grad_mags=param_grad_mag_handle, state_grad_mags=state_grad_mag_handle,
+                       output_log_var=output_log_var_handle)
 
     if train_config['n_iterations'] > 1:
         # plot of average improvement over iterations on validation set
@@ -183,14 +207,24 @@ def plot_average_metrics(metrics, epoch, handle_dict, train_val):
         update_trace(np.array([avg_kl[level]]), np.array([epoch]).astype(int), win=handle_dict['kl'], name=train_val + ', Level ' + str(level))
 
 
-def plot_grad_mags(grad_mags, epoch, handle_dict):
+def plot_param_grad_mags(param_grad_mags, epoch, handle_dict):
     """Plots the gradient magnitudes for each level, encoder/decoder."""
-    for level in range(len(grad_mags[:-1])):
-        encoder_grad_mag, decoder_grad_mag = grad_mags[level]
-        update_trace(np.array([encoder_grad_mag]), np.array([epoch]).astype(int), win=handle_dict['grad_mags'], name='Encoder, Level ' + str(level))
-        update_trace(np.array([decoder_grad_mag]), np.array([epoch]).astype(int), win=handle_dict['grad_mags'], name='Decoder, Level ' + str(level))
-    output_decoder_grad_mag = grad_mags[-1][1]
-    update_trace(np.array([output_decoder_grad_mag]), np.array([epoch]).astype(int), win=handle_dict['grad_mags'], name='Decoder, Output')
+    for level in range(len(param_grad_mags[:-1])):
+        encoder_grad_mag, decoder_grad_mag = param_grad_mags[level]
+        update_trace(np.array([encoder_grad_mag]), np.array([epoch]).astype(int), win=handle_dict['param_grad_mags'], name='Encoder, Level ' + str(level))
+        update_trace(np.array([decoder_grad_mag]), np.array([epoch]).astype(int), win=handle_dict['param_grad_mags'], name='Decoder, Level ' + str(level))
+    output_decoder_grad_mag = param_grad_mags[-1][1]
+    update_trace(np.array([output_decoder_grad_mag]), np.array([epoch]).astype(int), win=handle_dict['param_grad_mags'], name='Decoder, Output')
+
+
+def plot_state_grad_mags(state_grad_mags, epoch, handle_dict):
+    """Plots the state gradient magnitudes for each level and iteration."""
+    for it in range(state_grad_mags.shape[0]):
+        for level in range(state_grad_mags.shape[1]):
+            mean_grad_mag, log_var_grad_mag = state_grad_mags[it, level]
+            update_trace(np.array([mean_grad_mag]), np.array([epoch]).astype(int), win=handle_dict['state_grad_mags'], name='Mean, Level ' + str(level) + ', Iter. ' + str(it))
+            if log_var_grad_mag > 0:
+                update_trace(np.array([log_var_grad_mag]), np.array([epoch]).astype(int), win=handle_dict['state_grad_mags'], name='Log Variance, Level ' + str(level) + ', Iter. ' + str(it))
 
 
 def plot_average_improvement(metrics, epoch, handle_dict):
@@ -272,7 +306,8 @@ def plot_train(func):
         output_dict = func(model, train_config, data_loader, epoch, optimizers)
         metrics = [output_dict['avg_elbo'], output_dict['avg_cond_log_like'], output_dict['avg_kl']]
         plot_average_metrics(metrics, epoch, handle_dict, 'Train')
-        plot_grad_mags(output_dict['avg_grad_mags'], epoch, handle_dict)
+        plot_param_grad_mags(output_dict['avg_param_grad_mags'], epoch, handle_dict)
+        plot_state_grad_mags(output_dict['avg_state_grad_mags'], epoch, handle_dict)
         plot_opt_lr(optimizers, epoch, handle_dict)
         return output_dict, handle_dict
     return plotting_func

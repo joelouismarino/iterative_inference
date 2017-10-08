@@ -49,7 +49,7 @@ def load_data(dataset, data_path):
         fo.close()
         return result
 
-    if dataset in ['binarized_MNIST', 'MNIST']:
+    if dataset in ['binarized_MNIST', 'MNIST', 'mnist']:
         if not os.path.exists(os.path.join(data_path, 'MNIST')):
             os.makedirs(os.path.join(data_path, 'MNIST'))
 
@@ -109,7 +109,7 @@ def load_data(dataset, data_path):
 
         label_names = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 
-    elif dataset == 'static_binarized_MNIST':
+    elif dataset in ['static_binarized_MNIST', 'static_binarized_mnist']:
         if not os.path.exists(os.path.join(data_path, 'static_binarized_MNIST')):
             os.makedirs(os.path.join(data_path, 'static_binarized_MNIST'))
 
@@ -166,7 +166,7 @@ def load_data(dataset, data_path):
         label_names = data['classnames'].reshape(-1)
         label_names = [str(label_names[i][0]) for i in range(label_names.shape[0])]
 
-    elif dataset == 'CIFAR_10':
+    elif dataset in ['CIFAR_10', 'CIFAR10', 'cifar_10', 'cifar10']:
         if not os.path.exists(os.path.join(data_path, 'CIFAR_10')):
             os.makedirs(os.path.join(data_path, 'CIFAR_10'))
         if not os.path.exists(os.path.join(data_path, 'CIFAR_10', 'cifar-10-batches-py')):
@@ -185,7 +185,7 @@ def load_data(dataset, data_path):
         label_dict = unpickle(os.path.join(data_path, 'CIFAR_10', 'cifar-10-batches-py', 'batches.meta'))
         label_names = label_dict['label_names']
 
-    elif dataset == 'CIFAR_100':
+    elif dataset in ['CIFAR_100', 'CIFAR100', 'cifar_100', 'cifar100']:
         if not os.path.exists(os.path.join(data_path, 'CIFAR_100')):
             os.makedirs(os.path.join(data_path, 'CIFAR_100'))
         if not os.path.exists(os.path.join(data_path, 'CIFAR_100', 'cifar-100-python')):
@@ -204,7 +204,7 @@ def load_data(dataset, data_path):
         label_dict = unpickle(os.path.join(data_path, 'CIFAR_100', 'cifar-100-python', 'meta'))
         label_names = label_dict['fine_label_names']
 
-    elif dataset == 'SVHN':
+    elif dataset in ['SVHN', 'svhn', 'street_view_house_numbers']:
         if not os.path.exists(os.path.join(data_path, 'SVHN')):
             os.makedirs(os.path.join(data_path, 'SVHN'))
         if not os.path.exists(os.path.join(data_path, 'SVHN','train_32x32.mat')):
@@ -222,7 +222,7 @@ def load_data(dataset, data_path):
 
         label_names = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 
-    elif dataset == 'imagenet_32':
+    elif dataset in ['imagenet_32', 'IMAGENET32', 'IMAGENET_32', 'imagenet32']:
         if not os.path.exists(os.path.join(data_path, 'imagenet_32')):
             os.makedirs(os.path.join(data_path, 'imagenet_32'))
         if not os.path.exists(os.path.join(data_path, 'imagenet_32', 'train_32x32')):
@@ -259,7 +259,7 @@ def load_data(dataset, data_path):
                         os.rename(os.path.join(root, f), os.path.join(root, 'images', f))
         val = os.path.join(data_path, 'imagenet_32', 'valid_32x32')
 
-    elif dataset == 'imagenet_64':
+    elif dataset in ['imagenet_64', 'IMAGENET64', 'IMAGENET_64', 'imagenet64']:
         if not os.path.exists(os.path.join(data_path, 'imagenet_64')):
             os.makedirs(os.path.join(data_path, 'imagenet_64'))
         if not os.path.exists(os.path.join(data_path, 'imagenet_64', 'train_64x64')):

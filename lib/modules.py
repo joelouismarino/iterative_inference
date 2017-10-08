@@ -399,7 +399,7 @@ class DenseGaussianVariable(object):
         # encode the mean and log variance, update, return sample
         mean = self.posterior_mean(input)
         if self.posterior_form == 'gaussian':
-            log_var = self.posterior_log_var(input)
+            log_var = torch.clamp(self.posterior_log_var(input), -15., 15.)
         if self.update_form == 'highway':
             mean_gate = self.posterior_mean_gate(input)
             if self.posterior_form == 'gaussian':
@@ -673,6 +673,12 @@ class DenseLatentLevel(object):
         if ('top_norm_error' in self.encoding_form and in_out == 'in') or ('bottom_norm_error' in self.encoding_form and in_out == 'out'):
             norm_error = self.latent.norm_error()
             encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), 1)
+        if ('log_top_error' in self.encoding_form and in_out == 'in') or ('log_bottom_error' in self.encoding_form and in_out == 'out'):
+            log_error = torch.log(torch.abs(self.latent.error()))
+            encoding = log_error if encoding is None else torch.cat((encoding, log_error), 1)
+        if ('sign_top_error' in self.encoding_form and in_out == 'in') or ('sign_bottom_error' in self.encoding_form and in_out == 'out'):
+            sign_error = torch.sign(self.latent.error())
+            encoding = sign_error if encoding is None else torch.cat((encoding, sign_error), 1)
         if 'mean' in self.encoding_form and in_out == 'in':
             approx_post_mean = self.latent.posterior.mean.detach()
             encoding = approx_post_mean if encoding is None else torch.cat((encoding, approx_post_mean), 1)

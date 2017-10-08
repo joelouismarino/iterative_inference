@@ -32,6 +32,7 @@ class DenseLatentVariableModel(object):
         assert train_config['output_distribution'] in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
         self.output_distribution = train_config['output_distribution']
         self.reconstruction = None
+        self.kl_weight = 1.
 
         # construct the model
         self.levels = [None for _ in range(len(arch['n_latent']))]
@@ -254,6 +255,12 @@ class DenseLatentVariableModel(object):
         if 'bottom_error' in self.encoding_form:
             error = input - self.output_dist.mean.detach()
             encoding = error if encoding is None else torch.cat((encoding, error), dim=1)
+        if 'log_bottom_error' in self.encoding_form:
+            log_error = torch.log(torch.abs(input - self.output_dist.mean.detach()))
+            encoding = log_error if encoding is None else torch.cat((encoding, log_error), dim=1)
+        if 'sign_bottom_error' in self.encoding_form:
+            sign_error = torch.sign(input - self.output_dist.mean.detach())
+            encoding = sign_error if encoding is None else torch.cat((encoding, sign_error), dim=1)
         if 'bottom_norm_error' in self.encoding_form:
             error = input - self.output_dist.mean.detach()
             norm_error = None
@@ -357,7 +364,7 @@ class DenseLatentVariableModel(object):
         """
         cond_like = self.conditional_log_likelihoods(input)
         kl = sum(self.kl_divergences())
-        lower_bound = cond_like - kl
+        lower_bound = cond_like - self.kl_weight * kl
         if averaged:
             return lower_bound.mean(0)
         else:
@@ -371,7 +378,7 @@ class DenseLatentVariableModel(object):
         """
         cond_log_like = self.conditional_log_likelihoods(input)
         kl = self.kl_divergences()
-        lower_bound = cond_log_like - sum(kl)
+        lower_bound = cond_log_like - self.kl_weight * sum(kl)
         if averaged:
             return lower_bound.mean(0), cond_log_like.mean(0), [level_kl.mean(0) for level_kl in kl]
         else:

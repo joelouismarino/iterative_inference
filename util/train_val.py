@@ -27,16 +27,29 @@ def train_on_batch(model, batch, n_iterations, optimizers, train_enc=True, train
         elbo = model.elbo(batch, averaged=True)
         (-elbo).backward(retain_graph=True)
 
+        # keep track of state gradient magnitudes
+        approx_post_grads = np.zeros((n_iterations + 1, len(model.levels), 2))
+        for level_num, level in enumerate(model.levels):
+            grads = level.state_gradients()
+            approx_post_grads[0, level_num, 0] = grads[0].abs().mean().data.cpu().numpy()[0]
+            if len(grads) > 1:
+                approx_post_grads[0, level_num, 1] = grads[1].abs().mean().data.cpu().numpy()[0]
+
     model.not_trainable_state()
     # inference iterations
 
-    #import ipdb; ipdb.set_trace()
-
-    for _ in range(n_iterations - 1):
+    for it in range(n_iterations - 1):
         model.encode(batch)
         model.decode()
         elbo = model.elbo(batch, averaged=True)
         (-elbo).backward(retain_graph=True)
+
+        for level_num, level in enumerate(model.levels):
+            grads = level.state_gradients()
+            approx_post_grads[it+1, level_num, 0] = grads[0].abs().mean().data.cpu().numpy()[0]
+            if len(grads) > 1:
+                approx_post_grads[it+1, level_num, 1] = grads[1].abs().mean().data.cpu().numpy()[0]
+
         if not train_config['average_gradient'] or arch['encoder_type'] in ['em', 'EM']:
             if train_enc:
                 enc_opt.step()
@@ -49,6 +62,14 @@ def train_on_batch(model, batch, n_iterations, optimizers, train_enc=True, train
 
     elbo, cond_log_like, kl = model.losses(batch, averaged=True)
     (-elbo).backward()
+
+    for level_num, level in enumerate(model.levels):
+        grads = level.state_gradients()
+        approx_post_grads[-1, level_num, 0] = grads[0].abs().mean().data.cpu().numpy()[0]
+        if len(grads) > 1:
+            approx_post_grads[-1, level_num, 1] = grads[1].abs().mean().data.cpu().numpy()[0]
+
+    output_dict['state_grad_mags'] = approx_post_grads
 
     # divide encoder gradients
     if train_config['average_gradient']:
@@ -72,7 +93,7 @@ def train_on_batch(model, batch, n_iterations, optimizers, train_enc=True, train
         grad_mags[level_num, :] = np.array([encoder_grad_mag, decoder_grad_mag])
     output_decoder_grad_mag = ave_grad_mag(model.output_decoder.parameters())
     grad_mags[-1, :] = np.array([0., output_decoder_grad_mag])
-    output_dict['grad_mags'] = grad_mags
+    output_dict['param_grad_mags'] = grad_mags
 
     # update parameters
     if train_enc:
@@ -112,8 +133,6 @@ def run_on_batch(model, batch, n_iterations, vis=False):
     model.decode(generate=True)
     model.reset_state()
     elbo, cond_log_like, kl = model.losses(batch)
-
-
 
     total_elbo[:, 0] = elbo.data.cpu().numpy()
     total_cond_log_like[:, 0] = cond_log_like.data.cpu().numpy()
@@ -214,10 +233,11 @@ def run(model, train_config, data_loader, vis=False, eval=False):
     total_labels = np.zeros(n_examples)
     total_cond_like = total_recon = total_posterior = total_prior = None
     if vis:
-        total_cond_like = np.zeros([n_examples, n_iterations + 1, 2] + data_shape)
-        total_recon = np.zeros([n_examples, n_iterations + 1] + data_shape)
-        total_posterior = [np.zeros([n_examples, n_iterations + 1, 2, model.levels[level].n_latent]) for level in range(len(model.levels))]
-        total_prior = [np.zeros([n_examples, n_iterations + 1, 2, model.levels[level].n_latent]) for level in range(len(model.levels))]
+        # to capture all of the val set: replace batch_size with n_examples
+        total_cond_like = np.zeros([batch_size, n_iterations + 1, 2] + data_shape)
+        total_recon = np.zeros([batch_size, n_iterations + 1] + data_shape)
+        total_posterior = [np.zeros([batch_size, n_iterations + 1, 2, model.levels[level].n_latent]) for level in range(len(model.levels))]
+        total_prior = [np.zeros([batch_size, n_iterations + 1, 2, model.levels[level].n_latent]) for level in range(len(model.levels))]
 
     for batch_index, (batch, labels) in enumerate(data_loader):
         batch = Variable(batch)
@@ -244,7 +264,7 @@ def run(model, train_config, data_loader, vis=False, eval=False):
 
         total_labels[data_index:data_index + batch_size] = labels.numpy()
 
-        if vis:
+        if vis and batch_index == 0:
             total_cond_like[data_index:data_index + batch_size] = batch_output['cond_like']
             total_recon[data_index:data_index + batch_size] = batch_output['reconstructions']
             for level in range(len(model.levels)):
@@ -318,14 +338,26 @@ def run(model, train_config, data_loader, vis=False, eval=False):
 
 @plot_train
 @log_train
-def train(model, train_config, data_loader, optimizers):
+def train(model, train_config, data_loader, epoch, optimizers):
 
     output_dict = dict()
 
     avg_elbo = []
     avg_cond_log_like = []
     avg_kl = [[] for _ in range(len(model.levels))]
-    avg_grad_mags = np.zeros((len(model.levels) + 1, 2))
+    avg_param_grad_mags = np.zeros((len(model.levels) + 1, 2))
+    avg_state_grad_mags = np.zeros((train_config['n_iterations']+1, len(model.levels), 2))
+
+    if train_config['kl_warm_up']:
+        # if epoch < 50:
+        #     model.kl_weight = 0.
+        # elif epoch < 200:
+        #     model.kl_weight = (epoch-50) * 1. / 150
+        if epoch < 200:
+            model.kl_weight = epoch * 1. / 200
+        else:
+            model.kl_weight = 1.
+
     for batch, _ in data_loader:
         if train_config['cuda_device'] is not None:
             batch = Variable(batch.cuda(train_config['cuda_device']))
@@ -351,14 +383,18 @@ def train(model, train_config, data_loader, optimizers):
         avg_cond_log_like.append(batch_output['cond_log_like'])
         for l in range(len(avg_kl)):
             avg_kl[l].append(batch_output['kl'][l])
-        avg_grad_mags += batch_output['grad_mags']
+        avg_param_grad_mags += batch_output['param_grad_mags']
+        avg_state_grad_mags += batch_output['state_grad_mags']
 
     if np.isnan(np.sum(avg_elbo)):
         raise Exception('Nan encountered during training.')
 
+    model.kl_weight = 1.
+
     output_dict['avg_elbo'] = np.mean(avg_elbo)
     output_dict['avg_cond_log_like'] = np.mean(avg_cond_log_like)
     output_dict['avg_kl'] = [np.mean(avg_kl[l]) for l in range(len(model.levels))]
-    output_dict['avg_grad_mags'] = avg_grad_mags/len(iter(data_loader))
+    output_dict['avg_param_grad_mags'] = avg_param_grad_mags/len(iter(data_loader))
+    output_dict['avg_state_grad_mags'] = avg_state_grad_mags/len(iter(data_loader))
 
     return output_dict

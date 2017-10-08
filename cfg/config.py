@@ -1,7 +1,7 @@
 # training set-up
 train_config = {
-    'dataset': 'MNIST',
-    'output_distribution': 'bernoulli',
+    'dataset': 'CIFAR_10',
+    'output_distribution': 'gaussian',
     'batch_size': 64,
     'n_samples': 1,  # not yet implemented
     'n_iterations': 16,
@@ -12,8 +12,9 @@ train_config = {
     'average_gradient': True,
     'encoder_decoder_train_multiple': 1,
     'kl_min': 0,
-    'cuda_device': 1,
-    'display_iter': 5,
+    'kl_warm_up': True,
+    'cuda_device': 0,
+    'display_iter': 25,
     'resume_experiment': None
 }
 
@@ -23,8 +24,8 @@ arch = {
 
     'encoder_type': 'inference_model',  # 'em', 'inference_model'
 
-    'inference_model_type': 'recurrent',  # 'feedforward', 'recurrent'
-    'encoding_form': ['scaled_log_gradient', 'sign_gradient', 'mean', 'log_var'],
+    'inference_model_type': 'feedforward',  # 'feedforward', 'recurrent'
+    'encoding_form': ['posterior', 'log_gradient', 'sign_gradient', 'mean', 'log_var'],
     'variable_update_form': 'highway',
 
     'concat_variables': False,
@@ -34,21 +35,21 @@ arch = {
     'learn_top_prior': False,
     'top_size': 1,
 
-    'n_latent': [64],
+    'n_latent': [256],
 
     'n_det_enc': [0],
     'n_det_dec': [0],
 
-    'n_layers_enc': [1, 0],
+    'n_layers_enc': [2, 0],
     'n_layers_dec': [2, 1],
 
-    'n_units_enc': [512, 0],
-    'n_units_dec': [512, 1],
+    'n_units_enc': [1024, 0],
+    'n_units_dec': [1024, 1],
 
     'non_linearity_enc': 'elu',
     'non_linearity_dec': 'elu',
 
-    'connection_type_enc': 'sequential',
+    'connection_type_enc': 'highway',
     'connection_type_dec': 'sequential',
 
     'batch_norm_enc': False,
