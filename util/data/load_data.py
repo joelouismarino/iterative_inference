@@ -129,7 +129,10 @@ def load_data(dataset, data_path):
             lines = f.readlines()
         _train2 = np.array([[int(i) for i in line.split()] for line in lines]).astype('float32')
 
-        train = np.concatenate([_train1, _train2], axis=0).reshape((-1, 28, 28))
+        train = 255 * np.concatenate([_train1, _train2], axis=0).reshape((-1, 28, 28))
+
+        # we don't have binarized MNIST labels
+        train_labels = np.zeros((train.shape[0]))
 
         if not os.path.exists(os.path.join(data_path, 'static_binarized_MNIST', 'binarized_mnist_test.amat')):
             print 'Downloading binarized MNIST testing data...'
@@ -137,7 +140,10 @@ def load_data(dataset, data_path):
 
         with open(os.path.join(data_path, 'static_binarized_MNIST', 'binarized_mnist_test.amat')) as f:
             lines = f.readlines()
-        val = np.array([[int(i) for i in line.split()] for line in lines]).astype('float32').reshape((-1, 28, 28))
+        val = 255 * np.array([[int(i) for i in line.split()] for line in lines]).astype('float32').reshape((-1, 28, 28))
+
+        # we don't have binarized MNIST labels
+        val_labels = np.zeros((val.shape[0]))
 
         label_names = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
 

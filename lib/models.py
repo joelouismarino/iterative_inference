@@ -23,6 +23,7 @@ class DenseLatentVariableModel(object):
 
         self.encoding_form = arch['encoding_form']
         self.constant_variances = arch['constant_prior_variances']
+        self.single_output_variance = arch['single_output_variance']
         self.posterior_form = arch['posterior_form']
         self.batch_size = train_config['batch_size']
         self.kl_min = train_config['kl_min']
@@ -115,7 +116,10 @@ class DenseLatentVariableModel(object):
             non_lin = 'linear' if arch['whiten_input'] else 'sigmoid'
             self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity=non_lin, weight_norm=arch['weight_norm_dec'])
             if self.constant_variances:
-                self.trainable_log_var = Variable(torch.normal(torch.zeros(self.input_size), 0.25), requires_grad=True)
+                if arch['single_output_variance']:
+                    self.trainable_log_var = Variable(torch.zeros(1), requires_grad=True)
+                else:
+                    self.trainable_log_var = Variable(torch.normal(torch.zeros(self.input_size), 0.25), requires_grad=True)
             else:
                 self.log_var_output = Dense(arch['n_units_dec'][0], self.input_size, weight_norm=arch['weight_norm_dec'])
 
@@ -313,7 +317,10 @@ class DenseLatentVariableModel(object):
 
         if self.output_distribution == 'gaussian':
             if self.constant_variances:
-                self.output_dist.log_var = torch.clamp(self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1), -7., 15)
+                if self.single_output_variance:
+                    self.output_dist.log_var = torch.clamp(self.trainable_log_var * Variable(torch.ones(self.batch_size, self.input_size).cuda(self._cuda_device)), -7, 15)
+                else:
+                    self.output_dist.log_var = torch.clamp(self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1), -7., 15)
             else:
                 self.output_dist.log_var = torch.clamp(self.log_var_output(h), -7., 15)
 
@@ -328,8 +335,11 @@ class DenseLatentVariableModel(object):
         :return list of KL divergences at each level
         """
         kl = []
-        for latent_level in self.levels:
-            kl.append(torch.clamp(latent_level.kl_divergence(), min=self.kl_min).sum(1))
+        if len(self.levels) > 1:
+            for latent_level in self.levels:
+                kl.append(torch.clamp(latent_level.kl_divergence(), min=self.kl_min).sum(1))
+        else:
+            kl.append(self.levels[0].latent.analytical_kl().sum(1))
         if averaged:
             [level_kl.mean(0) for level_kl in kl]
         else:

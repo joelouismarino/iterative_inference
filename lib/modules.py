@@ -442,6 +442,10 @@ class DenseGaussianVariable(object):
     def kl_divergence(self):
         return self.posterior.log_prob(self.posterior.sample()) - self.prior.log_prob(self.posterior.sample())
 
+    def analytical_kl(self):
+        # assuming standard normal prior for now
+        return -0.5 * (1 + self.posterior.log_var - torch.pow(self.posterior.mean, 2) - torch.exp(self.posterior.log_var))
+
     def reset(self, mean=None, log_var=None, from_prior=True):
         if from_prior:
             mean = self.prior.mean.data.clone()
@@ -698,7 +702,7 @@ class DenseLatentLevel(object):
             log_grads = torch.log(torch.cat(self.state_gradients(), 1).abs() + 1e-5)
             encoding = log_grads if encoding is None else torch.cat((encoding, log_grads), 1)
         if 'scaled_log_gradient' in self.encoding_form and in_out == 'in':
-            log_grads = torch.clamp(torch.log(torch.cat(self.state_gradients(), 1).abs() + 1e-5) / 10., min=-1.)
+            log_grads = torch.clamp(torch.log(torch.cat(self.state_gradients(), 1).abs() + 1e-5) * 10., min=-5.)
             encoding = log_grads if encoding is None else torch.cat((encoding, log_grads), 1)
         if 'sign_gradient' in self.encoding_form and in_out == 'in':
             sign_grad = torch.sign(torch.cat(self.state_gradients(), 1))

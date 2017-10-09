@@ -18,22 +18,22 @@ def train_on_batch(model, batch, n_iterations, optimizers, train_enc=True, train
     model.decode(generate=True)
     model.reset_state()
 
-    if 'gradient' in arch['encoding_form']\
-            or 'log_gradient' in arch['encoding_form']\
-            or 'scaled_log_gradient' in arch['encoding_form']\
-            or 'sign_gradient' in arch['encoding_form']:
-        # initialize state gradients
-        model.decode()
-        elbo = model.elbo(batch, averaged=True)
-        (-elbo).backward(retain_graph=True)
+    # if 'gradient' in arch['encoding_form']\
+    #         or 'log_gradient' in arch['encoding_form']\
+    #         or 'scaled_log_gradient' in arch['encoding_form']\
+    #         or 'sign_gradient' in arch['encoding_form']:
+    #     # initialize state gradients
+    model.decode()
+    elbo = model.elbo(batch, averaged=True)
+    (-elbo).backward(retain_graph=True)
 
-        # keep track of state gradient magnitudes
-        approx_post_grads = np.zeros((n_iterations + 1, len(model.levels), 2))
-        for level_num, level in enumerate(model.levels):
-            grads = level.state_gradients()
-            approx_post_grads[0, level_num, 0] = grads[0].abs().mean().data.cpu().numpy()[0]
-            if len(grads) > 1:
-                approx_post_grads[0, level_num, 1] = grads[1].abs().mean().data.cpu().numpy()[0]
+    # keep track of state gradient magnitudes
+    approx_post_grads = np.zeros((n_iterations + 1, len(model.levels), 2))
+    for level_num, level in enumerate(model.levels):
+        grads = level.state_gradients()
+        approx_post_grads[0, level_num, 0] = grads[0].abs().mean().data.cpu().numpy()[0]
+        if len(grads) > 1:
+            approx_post_grads[0, level_num, 1] = grads[1].abs().mean().data.cpu().numpy()[0]
 
     model.not_trainable_state()
     # inference iterations
@@ -151,14 +151,14 @@ def run_on_batch(model, batch, n_iterations, vis=False):
             prior[level][:, 0, 0, :] = model.levels[level].latent.prior.mean.data.cpu().numpy()
             prior[level][:, 0, 1, :] = model.levels[level].latent.prior.log_var.data.cpu().numpy()
 
-    if 'gradient' in arch['encoding_form'] \
-            or 'log_gradient' in arch['encoding_form'] \
-            or 'scaled_log_gradient' in arch['encoding_form'] \
-            or 'sign_gradient' in arch['encoding_form']:
-        # initialize state gradients
-        model.decode()
-        elbo = model.elbo(batch, averaged=True)
-        (-elbo).backward(retain_graph=True)
+    # if 'gradient' in arch['encoding_form'] \
+    #         or 'log_gradient' in arch['encoding_form'] \
+    #         or 'scaled_log_gradient' in arch['encoding_form'] \
+    #         or 'sign_gradient' in arch['encoding_form']:
+    #     # initialize state gradients
+    model.decode()
+    elbo = model.elbo(batch, averaged=True)
+    (-elbo).backward(retain_graph=True)
 
     model.not_trainable_state()
 
@@ -272,7 +272,9 @@ def run(model, train_config, data_loader, vis=False, eval=False):
                 total_prior[level][data_index:data_index + batch_size] = batch_output['prior'][level]
 
         if eval:
+            print 'Running Eval...'
             total_log_like[data_index:data_index + batch_size] = eval_on_batch(model, batch, 5000)
+            print total_log_like[data_index]
 
     samples = None
     optimization_surface = None

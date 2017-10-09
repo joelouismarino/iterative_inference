@@ -1,8 +1,6 @@
 import torch.optim as opt
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau, ExponentialLR
 from logs import load_opt_checkpoint
-
-# todo: allow for options in optimzer and scheduler
 
 
 def get_optimizers(train_config, arch, model):
@@ -33,7 +31,8 @@ def get_optimizers(train_config, arch, model):
         elif train_config['decoder_optimizer'] in ['adam', 'Adam']:
             dec_opt = opt.Adam(decoder_params, lr=train_config['decoder_learning_rate'])
 
-    enc_sched = dec_sched = None
+    enc_sched = ExponentialLR(enc_opt, 0.999)
+    dec_sched = ExponentialLR(dec_opt, 0.999)
 
     # enc_sched = ReduceLROnPlateau(enc_opt, mode='min', factor=0.5)
     # dec_sched = ReduceLROnPlateau(dec_opt, mode='min', factor=0.5)
