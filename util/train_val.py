@@ -202,14 +202,17 @@ def run_on_batch(model, batch, n_iterations, vis=False):
 def eval_on_batch(model, batch, n_importance_samples):
     """Estimates marginal log likelihood of data using importance sampling."""
     importance_sample_estimate = np.zeros((batch.size()[0], n_importance_samples))
-
     for i in range(n_importance_samples):
-        model.decode()
+        # use current estimate of the approximate posterior
+        # model.decode()
+        # get the conditional likelihood and KL
         elbo, cond_log_like, kl = model.losses(batch)
-        importance_sample_estimate[:, i] = torch.exp(cond_log_like).data.cpu().numpy()
+        importance_sample_estimate[:, i] = cond_log_like.data.cpu().numpy()
         for level in range(len(model.levels)):
-            importance_weight = torch.exp(-model.levels[level].kl_divergence().sum(dim=1))
-            importance_sample_estimate[:, i:i + 1] *= importance_weight.data.cpu().numpy().reshape((-1, 1))
+            # weight the conditional likelihood by the negative KL (importance weight)
+            importance_weight = -model.levels[level].kl_divergence().sum(dim=1)
+            importance_sample_estimate[:, i:i + 1] += importance_weight.data.cpu().numpy().reshape((-1, 1))
+        importance_sample_estimate[:, i] = np.exp(importance_sample_estimate[:, i])
 
     return np.log(np.mean(importance_sample_estimate, axis=1))
 

@@ -37,10 +37,11 @@ for epoch in range(1500):
     # validation
     tic = time.time()
     visualize = False
-    eval = True
+    eval = False
     if epoch % train_config['display_iter'] == train_config['display_iter']-1:
         save_checkpoint(model, (enc_opt, dec_opt), epoch)
         visualize = True
+    if epoch % train_config['eval_iter'] == train_config['eval_iter']-1:
         eval = True
     model.eval()
     _, averages, _ = run(model, train_config, val_loader, epoch+1, handle_dict, vis=visualize, eval=eval, label_names=label_names)
