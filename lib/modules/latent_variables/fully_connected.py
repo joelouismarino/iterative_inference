@@ -24,14 +24,11 @@ class FullyConnectedLatentVariable(LatentVariable):
         Method to construct the latent variable from the latent_config dictionary
         """
         self.inference_procedure = inference_procedure
-
-        if self.inference_procedure in ['direct', 'gradient', 'error']:
-            # approximate posterior inputs
-            self.inf_mean_output = FullyConnectedLayer({'n_in': n_in[0],
-                                                        'n_out': n_variables})
-            self.inf_log_var_output = FullyConnectedLayer({'n_in': n_in[0],
-                                                           'n_out': n_variables})
-        if self.inference_procedure in ['gradient', 'error']:
+        self.inf_mean_output = FullyConnectedLayer({'n_in': n_in[0],
+                                                    'n_out': n_variables})
+        self.inf_log_var_output = FullyConnectedLayer({'n_in': n_in[0],
+                                                       'n_out': n_variables})
+        if 'gradient' in self.inference_procedure or 'error' in self.inference_procedure:
             self.approx_post_mean_gate = FullyConnectedLayer({'n_in': n_in[0],
                                                               'n_out': n_variables,
                                                               'non_linearity': 'sigmoid'})
@@ -40,10 +37,12 @@ class FullyConnectedLatentVariable(LatentVariable):
                                                                  'non_linearity': 'sigmoid'})
             # self.close_gates()
         # prior inputs
-        self.prior_mean = FullyConnectedLayer({'n_in': n_in[1],
-                                               'n_out': n_variables})
-        self.prior_log_var = FullyConnectedLayer({'n_in': n_in[1],
-                                                  'n_out': n_variables})
+        self.prior_mean = self.prior_log_var = None
+        if n_in[1] is not None:
+            self.prior_mean = FullyConnectedLayer({'n_in': n_in[1],
+                                                   'n_out': n_variables})
+            self.prior_log_var = FullyConnectedLayer({'n_in': n_in[1],
+                                                      'n_out': n_variables})
         # distributions
         self.approx_post = Normal()
         self.prior = Normal()
@@ -57,13 +56,12 @@ class FullyConnectedLatentVariable(LatentVariable):
         Args:
             input (Tensor): input to the inference procedure
         """
-        if self.inference_procedure in ['direct', 'gradient', 'error']:
-            approx_post_mean = self.inf_mean_output(input)
-            approx_post_log_var = self.inf_log_var_output(input)
-        if self.inference_procedure == 'direct':
+        approx_post_mean = self.inf_mean_output(input)
+        approx_post_log_var = self.inf_log_var_output(input)
+        if self.inference_procedure == ['observation']:
             self.approx_post.mean = approx_post_mean
             self.approx_post.log_var = torch.clamp(approx_post_log_var, -15, 5)
-        elif self.inference_procedure in ['gradient', 'error']:
+        else:
             # gated highway update
             approx_post_mean_gate = self.approx_post_mean_gate(input)
             self.approx_post.mean = approx_post_mean_gate * self.approx_post.mean.detach() \
@@ -71,8 +69,6 @@ class FullyConnectedLatentVariable(LatentVariable):
             approx_post_log_var_gate = self.approx_post_log_var_gate(input)
             self.approx_post.log_var = torch.clamp(approx_post_log_var_gate * self.approx_post.log_var.detach() \
                                        + (1 - approx_post_log_var_gate) * approx_post_log_var, -15, 5)
-        else:
-            raise NotImplementedError
 
         # retain the gradients (for inference)
         self.approx_post.mean.retain_grad()
@@ -110,8 +106,8 @@ class FullyConnectedLatentVariable(LatentVariable):
         """
         Method to reinitialize the approximate posterior.
         """
-        mean = self.prior.mean.detach().mean(dim=1).data
-        log_var = self.prior.log_var.detach().mean(dim=1).data
+        mean = self.prior.mean.detach().mean(dim=1)
+        log_var = self.prior.log_var.detach().mean(dim=1)
         self.approx_post.re_init(mean, log_var)
 
     def error(self, averaged=True):
@@ -155,8 +151,9 @@ class FullyConnectedLatentVariable(LatentVariable):
         Method to obtain generative parameters.
         """
         params = nn.ParameterList()
-        params.extend(list(self.prior_mean.parameters()))
-        params.extend(list(self.prior_log_var.parameters()))
+        if self.prior_mean is not None:
+            params.extend(list(self.prior_mean.parameters()))
+            params.extend(list(self.prior_log_var.parameters()))
         return params
 
     def approx_posterior_parameters(self):

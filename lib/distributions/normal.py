@@ -1,10 +1,9 @@
 import math
 import torch
 import torch.nn as nn
+import util.dtypes as dt
 from distribution import Distribution
-
-# import numpy as np
-# from torch.autograd import Variable
+from torch.autograd import Variable
 
 
 class Normal(Distribution):
@@ -16,16 +15,20 @@ class Normal(Distribution):
         log_var (tensor): the log variance of the density
     """
     def __init__(self, mean=None, log_var=None):
+        super(Normal, self).__init__()
+        self.mean_reset_value = nn.Parameter(dt.zeros(1))
+        self.log_var_reset_value = nn.Parameter(dt.zeros(1))
         self.mean = mean
         self.log_var = log_var
         self._sample = None
 
     def sample(self, n_samples=1, resample=False):
         """
-        Draws a tensor of samples.
-        :param n_samples: number of samples to draw
-        :param resample: whether to resample or just use current sample
-        :return: a (batch_size x n_samples x n_variables) tensor of samples
+        Draw samples from the distribution.
+
+        Args:
+            n_samples (int): number of samples to draw
+            resample (bool): whether to resample or just use current sample
         """
         if self._sample is None or resample:
             mean = self.mean
@@ -33,89 +36,86 @@ class Normal(Distribution):
             if len(self.mean.size()) == 2:
                 mean = mean.unsqueeze(1).repeat(1, n_samples, 1)
                 std = std.unsqueeze(1).repeat(1, n_samples, 1)
-            rand_normal = Variable(mean.data.new(mean.size()).normal_())
+            rand_normal = mean.data.new(mean.size()).normal_()
             self._sample = rand_normal.mul_(std).add_(mean)
         return self._sample
 
-    def log_prob(self, sample=None):
+    def log_prob(self, value):
         """
-        Estimates the log probability, evaluated at the sample.
-        :param sample: the sample to evaluate log probability at
-        :return: a (batch_size x n_samples x n_variables) estimate of log probabilities
-        """
-        if sample is None:
-            sample = self.sample()
-        assert self.mean is not None and self.log_var is not None, 'Mean or log variance are None.'
-        n_samples = sample.size()[1]
-        if len(self.mean.data.shape) == 2:
-            mean = self.mean.unsqueeze(1).repeat(1, n_samples, 1)
-        else:
-            mean = self.mean
-        if len(self.log_var.data.shape) == 2:
-            log_var = self.log_var.unsqueeze(1).repeat(1, n_samples, 1)
-        else:
-            log_var = self.log_var
-        return -0.5 * (log_var + np.log(2 * np.pi) + torch.pow(sample - mean, 2) / (torch.exp(log_var) + 1e-5))
+        Estimate the log probability (density), evaluated at the value or interval.
 
-    def reset_mean(self, value=None):
+        Args:
+            value (Variable, tensor, or tuple): the value or interval at/over
+                                                which to evaluate
+        """
+        if type(value) == tuple:
+            # evaluate the log probability mass within the interval
+            return torch.log(self.cdf(value[1]) - self.cdf(value[0]) + 1e-6)
+        else:
+            # evaluate the log density at the value
+            if value is None:
+                value = self.sample()
+            assert self.mean is not None and self.log_var is not None, 'Mean or log variance are None.'
+
+            n_samples = value.data.shape[1]
+            mean = self.mean
+            log_var = self.log_var
+            # unsqueeze the parameters along the sample dimension
+            if len(mean.size()) == 2:
+                mean = mean.unsqueeze(1).repeat(1, n_samples, 1)
+                log_var = log_var.unsqueeze(1).repeat(1, n_samples, 1)
+            elif len(mean.size()) == 4:
+                mean = mean.unsqueeze(1).repeat(1, n_samples, 1, 1, 1)
+                log_var = log_var.unsqueeze(1).repeat(1, n_samples, 1, 1, 1)
+
+            return (log_var.add(math.log(2 * math.pi)).add_((value.sub(mean).pow_(2)).div_(log_var.exp().add(1e-5)))).mul_(-0.5)
+
+    def cdf(self, value):
+        """
+        Evaluate the cumulative distribution function at the value.
+
+        Args:
+            value (Variable, tensor): the value at which to evaluate the cdf
+        """
+        n_samples = value.data.shape[1]
+        mean = self.mean
+        std = self.log_var.mul(0.5).exp_()
+        # unsqueeze the parameters along the sample dimension
+        if len(mean.size()) == 2:
+            mean = mean.unsqueeze(1).repeat(1, n_samples, 1)
+            std = std.unsqueeze(1).repeat(1, n_samples, 1)
+        return (1 + torch.erf((value - mean) / (math.sqrt(2) * std).add(1e-5))).mul_(0.5)
+
+    def re_init(self, mean_value=None, log_var_value=None):
+        """
+        Re-initializes the distribution.
+
+        Args:
+            mean_value (tensor): the value to set as the mean, defaults to zero
+            log_var_value (tensor): the value to set as the log variance,
+                                    defaults to zero
+        """
+        self.re_init_mean(mean_value)
+        self.re_init_log_var(log_var_value)
+
+    def re_init_mean(self, value):
         """
         Resets the mean to a particular value.
-        :param value: the value to set as the mean, defaults to zero
-        :return: None
+
+        Args:
+            value (tensor): the value to set as the mean, defaults to zero
         """
-        assert self.mean is not None or value is not None, 'Mean is None.'
-        mean = value if value is not None else torch.zeros(self.mean.size())
-        if self._cuda_device is not None:
-            mean = mean.cuda(self._cuda_device)
+        mean = value if value is not None else self.mean_reset_value.data.unsqueeze(1)
         self.mean = Variable(mean, requires_grad=True)
         self._sample = None
 
-    def reset_log_var(self, value=None):
+    def re_init_log_var(self, value):
         """
         Resets the log variance to a particular value.
-        :param value: the value to set as the log variance, defaults to zero
-        :return: None
+
+        Args:
+            value (tensor): the value to set as the log variance, defaults to zero
         """
-        assert self.log_var is not None or value is not None, 'Log variance is None.'
-        log_var = value if value is not None else torch.zeros(self.log_var.size())
-        if self._cuda_device is not None:
-            log_var = log_var.cuda(self._cuda_device)
+        log_var = value if value is not None else self.log_var_reset_value.data.unsqueeze(1)
         self.log_var = Variable(log_var, requires_grad=True)
         self._sample = None
-
-    def mean_trainable(self):
-        """
-        Makes the mean a trainable variable.
-        :return: None
-        """
-        assert self.mean is not None, 'Mean is None.'
-        self.mean = Variable(self.mean.data.clone(), requires_grad=True)
-
-    def log_var_trainable(self):
-        """
-        Makes the log variance a trainable variable.
-        :return: None
-        """
-        assert self.log_var is not None, 'Log variance is None.'
-        self.log_var = Variable(self.log_var.data.clone(), requires_grad=True)
-
-    def mean_not_trainable(self):
-        """
-        Makes the mean a non-trainable variable.
-        :return: None
-        """
-        self.mean.requires_grad = False
-
-    def log_var_not_trainable(self):
-        """
-        Makes the log variance a non-trainable variable.
-        :return: None
-        """
-        self.log_var.requires_grad = False
-
-    def state_parameters(self):
-        """
-        Gets the state parameters for this variable.
-        :return: tuple of mean and log variance
-        """
-        return self.mean, self.log_var

@@ -4,6 +4,8 @@ model_config = {
 
     'constant_variances_gen': False,
 
+    'output_dist': 'normal',
+
     'n_latent': [1024, 512],
 
     'n_layers_inf': [3, 3],

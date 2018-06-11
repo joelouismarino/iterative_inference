@@ -1,3 +1,4 @@
+import numpy as np
 from cfg import run_config, train_config, data_config, model_config
 from util.logging import Logger
 from util.plotting import Plotter
@@ -16,6 +17,7 @@ if run_config['plot']:
 train_data, val_data, label_names = load_data(data_config, train_config['batch_size'])
 
 # load the model
+model_config['output_size'] = np.prod(next(iter(train_data))[0].shape[1:])
 model = load_model(model_config)
 
 # load the optimizers, schedulers

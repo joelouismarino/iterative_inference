@@ -18,8 +18,8 @@ class FullyConnectedModel(Model):
         super(FullyConnectedModel, self).__init__(model_config)
         self._construct(**model_config)
 
-    def _construct(self, inference_input_form, constant_variances_gen, n_latent,
-                   n_layers_inf, n_layers_gen, n_units_inf, n_units_gen,
+    def _construct(self, inference_input_form, output_dist, constant_variances_gen, n_latent,
+                   output_size, n_layers_inf, n_layers_gen, n_units_inf, n_units_gen,
                    non_linearity_inf, non_linearity_gen, connection_type_inf,
                    connection_type_gen, batch_norm_inf, batch_norm_gen):
         """
@@ -27,8 +27,10 @@ class FullyConnectedModel(Model):
 
         Args:
             inference_input_form (list): contains 'observation', 'gradient', and/or 'error'
+            output_dist (str): the type of output distribution
             constant_variances_gen (boolean): whether to have learnable constant generated variances
             n_latent (list): number of latent variables at each level
+            output_size (int): number of observation dimensions
             n_layers_inf (list): number of layers in the inference model at each level
             n_layers_gen (list): number of layers in the generative model at each level
             n_units_inf (list): number of units in the inference model at each level
@@ -44,32 +46,95 @@ class FullyConnectedModel(Model):
 
         self.latent_levels = nn.ModuleList([])
 
+        inf_input_sizes = self._get_n_input(output_size, n_latent, self.inference_procedure)
+
         for level_ind in range(len(n_latent)):
             level_config = {}
 
             latent_config = {}
-            latent_config['n_in'] = [n_units_inf[level_ind], n_units_gen[level_ind+1]]
+
+            latent_config['n_in'] = [n_units_inf[level_ind]]
+            if level_ind == len(n_latent)-1:
+                latent_config['n_in'].append(None)
+            else:
+                latent_config['n_in'].append(n_units_gen[level_ind+1])
             latent_config['n_variables'] = n_latent[level_ind]
             latent_config['inference_procedure'] = self.inference_procedure
             level_config['latent_config'] = latent_config
 
             level_config['inference_procedure'] = self.inference_procedure
 
-            level_config['inference_config'] = {'n_in': None,
+            level_config['inference_config'] = {'n_in': inf_input_sizes[level_ind],
                                                 'n_units': n_units_inf[level_ind],
+                                                'n_layers': n_layers_inf[level_ind],
                                                 'connection_type': connection_type_inf,
                                                 'non_linearity': non_linearity_inf,
                                                 'batch_norm': batch_norm_inf}
 
-            level_config['generative_config'] = {'n_in': n_latent[level_ind+1],
-                                                 'n_units': n_units_gen[level_ind+1],
-                                                 'connection_type': connection_type_gen,
-                                                 'non_linearity': non_linearity_gen,
-                                                 'batch_norm': batch_norm_gen}
+            if level_ind == len(n_latent)-1:
+                level_config['generative_config'] = None
+            else:
+                level_config['generative_config'] = {'n_in': n_latent[level_ind+1],
+                                                     'n_units': n_units_gen[level_ind+1],
+                                                     'n_layers': n_layers_gen[level_ind+1],
+                                                     'connection_type': connection_type_gen,
+                                                     'non_linearity': non_linearity_gen,
+                                                     'batch_norm': batch_norm_gen}
 
             latent_level = FullyConnectedLatentLevel(level_config)
             self.latent_levels.append(latent_level)
 
+        self.output_network = FullyConnectedNetwork({'n_in': n_latent[0],
+                                                     'n_units': n_units_gen[0],
+                                                     'n_layers': n_layers_gen[0],
+                                                     'connection_type': connection_type_gen,
+                                                     'non_linearity': non_linearity_gen,
+                                                     'batch_norm': batch_norm_gen})
+
+        if output_dist.lower() == 'bernoulli':
+            self.output_dist = Bernoulli()
+            self.output_mean = FullyConnectedLayer({'n_in': n_units_gen[0],
+                                                    'n_out': output_size,
+                                                    'non_linearity': 'sigmoid'})
+        elif output_dist.lower() == 'normal':
+            self.output_dist = Normal()
+            self.output_mean = FullyConnectedLayer({'n_in': n_units_gen[0],
+                                                    'n_out': output_size,
+                                                    'non_linearity': 'sigmoid'})
+            self.output_log_var = FullyConnectedLayer({'n_in': n_units_gen[0],
+                                                       'n_out': output_size})
+        elif output_dist.lower() == 'multinomial':
+            self.output_dist = Multinomial()
+            self.output_mean = FullyConnectedLayer({'n_in': n_units_gen[0],
+                                                    'n_out': output_size})
+
+    def _get_n_input(self, output_size, n_latent, inf_procedure):
+        """
+        Calculates the input sizes for the inference model at each level.
+
+        Args:
+            output_size (int): the number of observation dimensions
+            n_latent (list): number of latent variables at each level
+            inf_procedure (list): contains strings for each inference encoding term
+        """
+        input_sizes = []
+        for level_ind in range(len(n_latent)):
+            n_input = 0
+            if 'observation' in inf_procedure:
+                if level_ind == 0:
+                    n_input += output_size
+                else:
+                    n_input += n_latent[level_ind-1]
+            if 'gradient' in inf_procedure:
+                n_input += 4 * n_latent[level_ind]
+            if 'error' in inf_procedure:
+                if level_ind == 0:
+                    n_input += output_size
+                else:
+                    n_input += n_latent[level_ind-1]
+                n_input += 3 * n_latent[level_ind]
+            input_sizes.append(n_input)
+        return input_sizes
 
     def _get_encoding_form(self, observation):
         """
@@ -80,22 +145,20 @@ class FullyConnectedModel(Model):
         """
         encoding = []
         if 'observation' in self.inference_procedure:
-            encoding.append(observation - 0.5)
+            encoding.append(observation)
         if 'gradient' in self.inference_procedure:
-            grads = self.latent_levels[0].latent.approx_posterior_gradients()
-            grads = torch.cat([LayerNorm()(grad) for grad in grads], dim=1)
-            params = self.latent_levels[0].latent.approx_posterior_parameters()
-            params = torch.cat([LayerNorm()(param) for param in params], dim=1)
-            grads_params = torch.cat([grads, params], dim=1)
-            encoding.append(grads_params)
+            pass
         if 'error' in self.inference_procedure:
-            errors = [self._output_error(observation), self.latent_levels[0].latent.error()]
-            errors = torch.cat([LayerNorm()(error) for error in errors], dim=1)
-            params = self.latent_levels[0].latent.approx_posterior_parameters()
-            params = torch.cat([LayerNorm()(param) for param in params], dim=1)
-            errors_params = torch.cat([errors, params], dim=1)
-            encoding.append(errors_params)
-        return encoding[0] if len(encoding) == 1 else torch.cat(encoding, dim=1)
+            error = self._output_error(observation)
+            error = LayerNorm()(error)
+            encoding.append(error)
+
+        if len(encoding) == 0:
+            return None
+        elif len(encoding) == 1:
+            return encoding[0]
+        else:
+            return torch.cat(encoding, dim=1)
 
     def _output_error(self, observation):
         """
@@ -173,7 +236,7 @@ class FullyConnectedModel(Model):
         for level in self.latent_levels:
             params.extend(list(level.generative_parameters()))
         params.extend(list(self.output_network.parameters()))
-        params.extend(list(self.output_mean.parameters))
+        params.extend(list(self.output_mean.parameters()))
         if type(self.output_dist) == Normal:
             params.extend(list(self.output_log_var.parameters()))
         return params

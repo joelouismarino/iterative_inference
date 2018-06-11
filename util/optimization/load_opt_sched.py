@@ -9,7 +9,7 @@ def load_opt_sched(train_config, model, last_epoch=-1):
 
 def load_opt(train_config, model):
     inf_params = model.inference_parameters()
-    inf_opt = opt.Adam(encoder_params, lr=train_config['inference_learning_rate'])
+    inf_opt = opt.Adam(inf_params, lr=train_config['inference_learning_rate'])
     gen_params = model.generative_parameters()
     gen_opt = opt.Adam(gen_params, lr=train_config['generation_learning_rate'])
     return (inf_opt, gen_opt)

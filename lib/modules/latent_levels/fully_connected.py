@@ -30,15 +30,46 @@ class FullyConnectedLatentLevel(LatentLevel):
             self.generative_model = FullyConnectedNetwork(generative_config)
         else:
             self.generative_model = lambda x:x
-        
-    def _get_encoding_form(self, input):
+
+    def _get_encoding_form(self, input, in_out):
         """
         Gets the appropriate input form for the inference procedure.
+
+        Args:
+            input (Tensor): observation and/or lower level error if 'in',
+                            observation if 'out'
+            in_out (str): 'in' or 'out', specifies whether the encoding is for
+                          the input of the inference procedure or the output of
+                          the latent level
         """
-        if self.inference_procedure == 'direct':
-            return input
+        encoding = []
+        if 'observation' in self.inference_procedure:
+            encoding.append(input)
+        if 'gradient' in self.inference_procedure:
+            if in_out == 'in':
+                grads = self.latent.approx_posterior_gradients()
+                grads = torch.cat([LayerNorm()(grad) for grad in grads], dim=1)
+                encoding.append(grads)
+                params = self.latent.approx_posterior_parameters()
+                params = torch.cat([LayerNorm()(param) for param in params], dim=1)
+                encoding.append(params)
+        if 'error' in self.inference_procedure:
+            error = self.latent.error()
+            error = LayerNorm()(error)
+            encoding.append(error)
+            if in_out == 'in':
+                if 'observation' not in self.inference_procedure:
+                    encoding.append(input)
+                params = self.latent.approx_posterior_parameters()
+                params = torch.cat([LayerNorm()(param) for param in params], dim=1)
+                encoding.append(params)
+
+        if len(encoding) == 0:
+            return None
+        elif len(encoding) == 1:
+            return encoding[0]
         else:
-            raise NotImplementedError
+            return torch.cat(encoding, dim=1)
 
     def infer(self, input):
         """
@@ -47,9 +78,10 @@ class FullyConnectedLatentLevel(LatentLevel):
         Args:
             input (Tensor): input to the inference procedure
         """
-        input = self._get_encoding_form(input)
+        input = self._get_encoding_form(input, 'in')
         input = self.inference_model(input)
-        self.latent.infer(input)
+        latent_sample = self.latent.infer(input)
+        return self._get_encoding_form(latent_sample, 'out')
 
     def generate(self, input, gen, n_samples):
         """
@@ -65,12 +97,6 @@ class FullyConnectedLatentLevel(LatentLevel):
             b, s, n = input.data.shape
             input = self.generative_model(input.view(b * s, n)).view(b, s, -1)
         return self.latent.generate(input, gen=gen, n_samples=n_samples)
-
-    def step(self):
-        """
-        Method to step the latent level forward in the sequence.
-        """
-        self.latent.step()
 
     def re_init(self):
         """

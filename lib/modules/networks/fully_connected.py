@@ -18,17 +18,27 @@ class FullyConnectedNetwork(Network):
         super(FullyConnectedNetwork, self).__init__(network_config)
         self._construct(**network_config)
 
-    def _construct(self, n_in, n_units, connection_type='sequential',
+    def _construct(self, n_in, n_units, n_layers, connection_type='sequential',
                    non_linearity=None, batch_norm=False, weight_norm=False, dropout=0.):
         """
-        Method to construct the network from the network_config dictionary parameters.
+        Method to construct the network from the network_config parameters.
+
+        Args:
+            n_in (int): input size
+            n_units (int): number of units at each layer of the network
+            n_layers (int): number of layers in the network
+            connection_type (str): the connection type
+            non_linearity (str): the type of non-linearity
+            batch_norm (boolean): whether or not to batch norm activations
+            weight_norm (boolean): whether or not to weight norm the weights
+            dropout (float): dropout probability
         """
         self.layers = nn.ModuleList([])
         self.gates = nn.ModuleList([])
 
         connection_types = ['sequential', 'residual', 'highway', 'concat_input', 'concat']
-        assert network_config['connection_type'] in connection_types, 'Connection type not found.'
-        self.connection_type = network_config['connection_type']
+        assert connection_type in connection_types, 'Connection type not found.'
+        self.connection_type = connection_type
 
         n_in_orig = n_in
         output_size = 0
@@ -40,7 +50,7 @@ class FullyConnectedNetwork(Network):
                                                    'batch_norm': batch_norm,
                                                    'weight_norm': weight_norm})
 
-        for _ in range(network_config['n_layers']):
+        for _ in range(n_layers):
             layer = FullyConnectedLayer({'n_in': n_in, 'n_out': n_units,
                                          'non_linearity': non_linearity,
                                          'batch_norm': batch_norm,

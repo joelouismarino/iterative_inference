@@ -56,27 +56,27 @@ class FullyConnectedLayer(Layer):
             self.dropout = nn.Dropout(dropout)
 
         if initialize == 'normal':
-            init.normal(self.linear.weight)
+            init.normal_(self.linear.weight)
         elif initialize == 'glorot_uniform':
-            init.xavier_uniform(self.linear.weight, gain=init_gain)
+            init.xavier_uniform_(self.linear.weight, gain=init_gain)
         elif initialize == 'glorot_normal':
-            init.xavier_normal(self.linear.weight, gain=init_gain)
+            init.xavier_normal_(self.linear.weight, gain=init_gain)
         elif initialize == 'kaiming_uniform':
-            init.kaiming_uniform(self.linear.weight)
+            init.kaiming_uniform_(self.linear.weight)
         elif initialize == 'kaiming_normal':
-            init.kaiming_normal(self.linear.weight)
+            init.kaiming_normal_(self.linear.weight)
         elif initialize == 'orthogonal':
-            init.orthogonal(self.linear.weight, gain=init_gain)
+            init.orthogonal_(self.linear.weight, gain=init_gain)
         elif initialize == '':
             pass
         else:
             raise Exception('Parameter initialization ' + str(initialize) + ' not found.')
 
-        init.constant(self.linear.bias, 0.)
+        init.constant_(self.linear.bias, 0.)
 
         if batch_norm:
-            init.normal(self.bn.weight, 1, 0.02)
-            init.constant(self.bn.bias, 0.)
+            init.normal_(self.bn.weight, 1, 0.02)
+            init.constant_(self.bn.bias, 0.)
 
     def forward(self, input):
         """
