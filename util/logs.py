@@ -67,7 +67,8 @@ def log_vis(func):
 
         if vis:
             epoch_path = os.path.join(log_path, 'visualizations', 'epoch_' + str(epoch))
-            os.makedirs(epoch_path)
+            if not os.path.exists(epoch_path):
+                os.makedirs(epoch_path)
 
             batch_size = train_config['batch_size']
             n_iterations = train_config['n_iterations']
@@ -95,8 +96,10 @@ def log_vis(func):
                 pickle.dump(output_dict['optimization_surface'], open(os.path.join(epoch_path, 'optimization_surface.p'), 'w'))
 
         if eval:
-            pass
-            # todo: save log likelihood estimate
+            eval_epoch_path = os.path.join(log_path, 'metrics', 'epoch_' + str(epoch))
+            if not os.path.exists(eval_epoch_path):
+                os.makedirs(eval_epoch_path)
+            pickle.dump(output_dict['total_log_like'], open(os.path.join(eval_epoch_path, 'total_log_like.p'), 'w'))
 
         return output_dict
 
@@ -124,11 +127,14 @@ def get_last_epoch():
 def load_opt_checkpoint(epoch=-1):
     if epoch == -1:
         epoch = get_last_epoch()
-    return torch.load(os.path.join(log_path, 'checkpoints', 'epoch_'+str(epoch)+'_opt.ckpt'))
+    enc_opt, dec_opt = torch.load(os.path.join(log_path, 'checkpoints', 'epoch_'+str(epoch)+'_opt.ckpt'))
+    return enc_opt, dec_opt, epoch
 
 
-def load_model_checkpoint(epoch=-1):
+def load_model_checkpoint(epoch=-1, cuda_device=0):
     if epoch == -1:
         epoch = get_last_epoch()
-    return torch.load(os.path.join(log_path, 'checkpoints', 'epoch_'+str(epoch)+'_model.ckpt'))
+    return torch.load(os.path.join(log_path, 'checkpoints', 'epoch_'+str(epoch)+'_model.ckpt'),
+                      map_location={'cuda:0': 'cuda:' + str(cuda_device), 'cuda:1': 'cuda:' + str(cuda_device),
+                                    'cpu': 'cuda:' + str(cuda_device)})
 

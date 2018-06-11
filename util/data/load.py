@@ -9,9 +9,6 @@ from scipy.io import loadmat
 
 from load_torch_data import load_torch_data
 
-# todo: add label names to omniglot
-# todo: add labels to static binarized MNIST, omniglot
-
 
 @load_torch_data
 def load_data(dataset, data_path):
@@ -129,7 +126,7 @@ def load_data(dataset, data_path):
             lines = f.readlines()
         _train2 = np.array([[int(i) for i in line.split()] for line in lines]).astype('float32')
 
-        train = 255 * np.concatenate([_train1, _train2], axis=0).reshape((-1, 28, 28))
+        train = 255 * np.concatenate([_train1, _train2], axis=0).reshape((-1, 28, 28, 1))
 
         # we don't have binarized MNIST labels
         train_labels = np.zeros((train.shape[0]))
@@ -140,7 +137,7 @@ def load_data(dataset, data_path):
 
         with open(os.path.join(data_path, 'static_binarized_MNIST', 'binarized_mnist_test.amat')) as f:
             lines = f.readlines()
-        val = 255 * np.array([[int(i) for i in line.split()] for line in lines]).astype('float32').reshape((-1, 28, 28))
+        val = 255 * np.array([[int(i) for i in line.split()] for line in lines]).astype('float32').reshape((-1, 28, 28, 1))
 
         # we don't have binarized MNIST labels
         val_labels = np.zeros((val.shape[0]))
@@ -155,8 +152,10 @@ def load_data(dataset, data_path):
             print 'Downloading Omniglot images_background.zip...'
             urllib.urlretrieve('https://github.com/yburda/iwae/raw/master/datasets/OMNIGLOT/chardata.mat', os.path.join(data_path, 'omniglot', 'chardata.mat'))
         data = loadmat(os.path.join(data_path, 'omniglot', 'chardata.mat'))
-        train = data['data'].swapaxes(0,1).reshape((-1, 28, 28))
-        val = data['testdata'].swapaxes(0,1).reshape((-1, 28, 28))
+        train = 255. * data['data'].swapaxes(0,1).reshape((-1, 28, 28, 1)).astype('float32')
+        val = 255. * data['testdata'].swapaxes(0,1).reshape((-1, 28, 28, 1)).astype('float32')
+        train_labels = np.zeros(train.shape[0])
+        val_labels = np.zeros(val.shape[0])
 
     elif dataset == 'caltech_101_silhouettes':
         if not os.path.exists(os.path.join(data_path, 'caltech_101_silhouettes')):

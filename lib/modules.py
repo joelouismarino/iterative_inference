@@ -387,8 +387,13 @@ class DenseGaussianVariable(object):
             self.prior.log_var_trainable()
 
     def init_dist(self, form='gaussian'):
+        """
+        Initializes a distribution.
+        :param form: the form of the distribution, either Gaussian or point estimate (Dirac delta).
+        :return: the initialized distribution
+        """
         if form == 'gaussian':
-            return DiagonalGaussian(Variable(torch.zeros(self.batch_size, self.n_variables)),
+            return DiagonalGaussian(self.n_variables, Variable(torch.zeros(self.batch_size, self.n_variables)),
                                     Variable(torch.zeros(self.batch_size, self.n_variables)))
         elif form == 'point_estimate':
             return PointEstimate(Variable(torch.zeros(self.batch_size, self.n_variables)))
@@ -396,6 +401,11 @@ class DenseGaussianVariable(object):
             raise Exception('Distribution form not found.')
 
     def encode(self, input):
+        """
+        Encode the input into an estimate of / update to the approximate posterior parameters.
+        :param input: the input to the variable
+        :return: tensor of approximate posterior samples of size (batch_size x 1 x n_variables)
+        """
         # encode the mean and log variance, update, return sample
         mean = self.posterior_mean(input)
         if self.posterior_form == 'gaussian':
@@ -414,42 +424,99 @@ class DenseGaussianVariable(object):
             self.posterior.log_var.retain_grad()
         return self.posterior.sample(resample=True)
 
-    def decode(self, input, generate=False):
-        # decode the mean and log variance, update, return sample
+    def decode(self, input, n_samples, generate=False):
+        """
+        Generates a sample from the prior or the approximate posterior.
+        :param input: the input from above if learning the prior
+        :param n_samples: number of samples to draw
+        :param generate: whether to sample from the prior or the approximate posterior
+        :return: tensor of samples of size (batch_size x n_samples x n_variables)
+        """
         if self.learn_prior:
-            self.prior.mean = self.prior_mean(input)
+            # reshape samples into batch dimension
+            batch_size = input.size()[0]
+            sample_size = input.size()[1]
+            data_size = input.size()[2]
+            input = input.view(-1, data_size)
+            mean = self.prior_mean(input).view(batch_size, sample_size, -1)
+            self.prior.mean = mean
             if self.prior_log_var is not None:
-                self.prior.log_var = self.prior_log_var(input)
+                log_var = self.prior_log_var(input).view(batch_size, sample_size, -1)
+                self.prior.log_var = log_var
         if generate:
-            sample = self.prior.sample(resample=True)
+            sample = self.prior.sample(n_samples=n_samples, resample=True)
         else:
-            #temp_mean = 1.0 * self.posterior.mean
-            #temp_mean.requires_grad = True
-            #self.posterior.mean = temp_mean
-            #if self.posterior_form == 'gaussian':
-            #    temp_log_var = 1.0 * self.posterior.log_var
-            #    temp_log_var.requires_grad = True
-            #    self.posterior.log_var = temp_log_var
-            sample = self.posterior.sample(resample=True)
+            sample = self.posterior.sample(n_samples=n_samples, resample=True)
         return sample
 
-    def error(self):
-        return self.posterior.sample() - self.prior.mean.detach()
+    def error(self, averaged=True):
+        """
+        Calculates the error for this variable (sample - prior_mean)
+        :param averaged: whether to average over samples
+        :return: the error
+        """
+        sample = self.posterior.sample()
+        n_samples = sample.size()[1]
+        prior_mean = self.prior.mean.detach()
+        if len(prior_mean.data.shape) == 2:
+            prior_mean = prior_mean.unsqueeze(1).repeat(1, n_samples, 1)
+        if averaged:
+            return (sample - prior_mean).mean(dim=1)
+        else:
+            return sample - prior_mean
 
-    def norm_error(self):
-        return self.error() / (torch.exp(self.prior.log_var.detach()) + 1e-7)
+    def norm_error(self, averaged=True):
+        """
+        Calculates the normalized error for this variable (sample - prior_mean) / prior_variance
+        :param averaged: whether to average over samples
+        :return: the normalized error
+        """
+        sample = self.posterior.sample()
+        n_samples = sample.size()[1]
+        prior_mean = self.prior.mean.detach()
+        if len(prior_mean.data.shape) == 2:
+            prior_mean = prior_mean.unsqueeze(1).repeat(1, n_samples, 1)
+        prior_log_var = self.prior.log_var.detach()
+        if len(prior_log_var.data.shape) == 2:
+            prior_log_var = prior_log_var.unsqueeze(1).repeat(1, n_samples, 1)
+        n_error = (sample - prior_mean) / torch.exp(prior_log_var + 1e-7)
+        if averaged:
+            n_error = n_error.mean(dim=1)
+        return n_error
 
     def kl_divergence(self):
+        """
+        Calculates an estimate of the KL divergence for this variable.
+        Using the current estimate of the distributions and approximate posterior sample
+        :return: KL divergence estimate of size (batch_size x n_samples x n_variables)
+        """
         return self.posterior.log_prob(self.posterior.sample()) - self.prior.log_prob(self.posterior.sample())
 
     def analytical_kl(self):
-        # assuming standard normal prior for now
-        return -0.5 * (1 + self.posterior.log_var - torch.pow(self.posterior.mean, 2) - torch.exp(self.posterior.log_var))
+        """
+        Calculates the analytical KL divergence between two Gaussian distributions.
+        WARNING: currently assumes a standard Normal for the prior
+        :return: KL divergence of size (batch_size x n_samples x n_variables)
+        """
+        n_samples = self.posterior.sample().size()[1]
+        kl = -0.5 * (1 + self.posterior.log_var - torch.pow(self.posterior.mean, 2) - torch.exp(self.posterior.log_var))
+        return kl.unsqueeze(1).repeat(1, n_samples, 1)
 
     def reset(self, mean=None, log_var=None, from_prior=True):
+        """
+        Resets the approximate posterior estimate.
+        :param mean: value to set as the new mean
+        :param log_var: value to set as the new log variance
+        :param from_prior: whether to initialize using the prior
+        :return: None
+        """
         if from_prior:
             mean = self.prior.mean.data.clone()
             log_var = self.prior.log_var.data.clone()
+            if len(mean.shape) == 3:
+                mean = mean.mean(dim=1)
+            if len(log_var.shape) == 3:
+                log_var = log_var.mean(dim=1)
         self.reset_mean(mean)
         if self.posterior_form == 'gaussian':
             self.reset_log_var(log_var)
@@ -473,6 +540,10 @@ class DenseGaussianVariable(object):
         self.posterior.log_var_not_trainable()
 
     def eval(self):
+        """
+        Puts the variable into eval mode.
+        :return: None
+        """
         if self.learn_prior:
             self.prior_mean.eval()
             if self.prior_log_var is not None:
@@ -486,6 +557,10 @@ class DenseGaussianVariable(object):
                 self.posterior_log_var_gate.eval()
 
     def train(self):
+        """
+        Puts the variable into train mode.
+        :return: None
+        """
         if self.learn_prior:
             self.prior_mean.train()
             if self.prior_log_var is not None:
@@ -499,7 +574,11 @@ class DenseGaussianVariable(object):
                 self.posterior_log_var_gate.train()
 
     def cuda(self, device_id=0):
-        # place all modules on the GPU
+        """
+        Places the variable on the GPU.
+        :param device_id: device on which to place the variable.
+        :return: None
+        """
         if self.learn_prior:
             self.prior_mean.cuda(device_id)
             if self.prior_log_var is not None:
@@ -515,9 +594,17 @@ class DenseGaussianVariable(object):
         self.posterior.cuda(device_id)
 
     def parameters(self):
+        """
+        Gets all parameters for this variable.
+        :return: List of all parameters.
+        """
         return self.encoder_parameters() + self.decoder_parameters()
 
     def encoder_parameters(self):
+        """
+        Gets all encoder parameters for this variable.
+        :return: List of all encoder parameters.
+        """
         encoder_params = []
         encoder_params.extend(list(self.posterior_mean.parameters()))
         if self.posterior_form == 'gaussian':
@@ -529,6 +616,10 @@ class DenseGaussianVariable(object):
         return encoder_params
 
     def decoder_parameters(self):
+        """
+        Gets all decoder parameters for this variable.
+        :return: List of all decoder parameters.
+        """
         decoder_params = []
         if self.learn_prior:
             decoder_params.extend(list(self.prior_mean.parameters()))
@@ -539,9 +630,17 @@ class DenseGaussianVariable(object):
         return decoder_params
 
     def state_parameters(self):
+        """
+        Gets the state (approximate posterior) parameters.
+        :return: List of state parameters.
+        """
         return self.posterior.state_parameters()
 
     def state_gradients(self):
+        """
+        Gets the state (approximate posterior) gradients.
+        :return: List containing approximate posterior mean (and possibly log variance) gradients.
+        """
         assert self.posterior.mean.grad is not None, 'State gradients are None.'
         grads = [self.posterior.mean.grad.detach()]
         if self.posterior_form == 'gaussian':
@@ -674,9 +773,23 @@ class DenseLatentLevel(object):
         if ('top_error' in self.encoding_form and in_out == 'in') or ('bottom_error' in self.encoding_form and in_out == 'out'):
             error = self.latent.error()
             encoding = error if encoding is None else torch.cat((encoding, error), 1)
+        if ('l2_norm_top_error' in self.encoding_form and in_out == 'in') or ('l2_norm_bottom_error' in self.encoding_form and in_out == 'out'):
+            error = self.latent.error()
+            norm_error = error / torch.norm(error, 2, 1, True)
+            encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), 1)
+        if ('layer_norm_top_error' in self.encoding_form and in_out == 'in') or ('layer_norm_bottom_error' in self.encoding_form and in_out == 'out'):
+            # TODO
+            pass
         if ('top_norm_error' in self.encoding_form and in_out == 'in') or ('bottom_norm_error' in self.encoding_form and in_out == 'out'):
             norm_error = self.latent.norm_error()
             encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), 1)
+        if ('l2_norm_top_norm_error' in self.encoding_form and in_out == 'in') or ('l2_norm_bottom_norm_error' in self.encoding_form and in_out == 'out'):
+            norm_error = self.latent.norm_error()
+            norm_norm_error = norm_error / torch.norm(norm_error, 2, 1, True)
+            encoding = norm_norm_error if encoding is None else torch.cat((encoding, norm_norm_error), 1)
+        if ('layer_norm_top_norm_error' in self.encoding_form and in_out == 'in') or ('layer_norm_bottom_norm_error' in self.encoding_form and in_out == 'out'):
+            # TODO
+            pass
         if ('log_top_error' in self.encoding_form and in_out == 'in') or ('log_bottom_error' in self.encoding_form and in_out == 'out'):
             log_error = torch.log(torch.abs(self.latent.error()))
             encoding = log_error if encoding is None else torch.cat((encoding, log_error), 1)
@@ -685,19 +798,80 @@ class DenseLatentLevel(object):
             encoding = sign_error if encoding is None else torch.cat((encoding, sign_error), 1)
         if 'mean' in self.encoding_form and in_out == 'in':
             approx_post_mean = self.latent.posterior.mean.detach()
+            if len(approx_post_mean.data.shape) == 3:
+                approx_post_mean = approx_post_mean.mean(dim=1)
             encoding = approx_post_mean if encoding is None else torch.cat((encoding, approx_post_mean), 1)
+        if 'l2_norm_mean' in self.encoding_form and in_out == 'in':
+            mean_norm = torch.norm(self.latent.posterior.mean.detach(), 2, 1, True)
+            norm_mean = self.latent.posterior.mean.detach()/mean_norm
+            if len(norm_mean.data.shape) == 3:
+                norm_mean = norm_mean.mean(dim=1)
+            encoding = norm_mean if encoding is None else torch.cat((encoding, norm_mean), 1)
+        if 'layer_norm_mean' in self.encoding_form and in_out == 'in':
+            post_mean = self.latent.posterior.mean.detach()
+            layer_mean = post_mean.mean(dim=0, keepdim=True)
+            # layer_std = post_mean.std(dim=0, keepdim=True)
+            norm_mean = post_mean - layer_mean
+            if len(norm_mean.data.shape) == 3:
+                norm_mean = norm_mean.mean(dim=1)
+            encoding = norm_mean if encoding is None else torch.cat((encoding, norm_mean), 1)
         if 'log_var' in self.encoding_form and in_out == 'in':
             approx_post_log_var = self.latent.posterior.log_var.detach()
+            if len(approx_post_log_var.data.shape) == 3:
+                approx_post_log_var = approx_post_mean.mean(dim=1)
             encoding = approx_post_log_var if encoding is None else torch.cat((encoding, approx_post_log_var), 1)
+        if 'l2_norm_log_var' in self.encoding_form and in_out == 'in':
+            log_var_norm = torch.norm(self.latent.posterior.log_var.detach(), 2, 1, True)
+            norm_log_var = self.latent.posterior.log_var.detach()/log_var_norm
+            if len(norm_log_var.data.shape) == 3:
+                norm_log_var = norm_log_var.mean(dim=1)
+            encoding = norm_log_var if encoding is None else torch.cat((encoding, norm_log_var), 1)
+        if 'layer_norm_log_var' in self.encoding_form and in_out == 'in':
+            post_log_var = self.latent.posterior.log_var.detach()
+            layer_mean = post_log_var.mean(dim=0, keepdim=True)
+            # layer_std = post_mean.std(dim=0, keepdim=True)
+            norm_log_var = post_log_var - layer_mean
+            if len(norm_log_var.data.shape) == 3:
+                norm_log_var = norm_log_var.mean(dim=1)
+            encoding = norm_log_var if encoding is None else torch.cat((encoding, norm_log_var), 1)
         if 'var' in self.encoding_form and in_out == 'in':
             approx_post_var = torch.exp(self.latent.posterior.log_var.detach())
+            if len(approx_post_var.data.shape) == 3:
+                approx_post_var = approx_post_mean.mean(dim=1)
             encoding = approx_post_var if encoding is None else torch.cat((encoding, approx_post_var), 1)
         if 'mean_gradient' in self.encoding_form and in_out == 'in':
             encoding = self.state_gradients()[0] if encoding is None else torch.cat((encoding, self.state_gradients()[0]), 1)
+        if 'l2_norm_mean_gradient' in self.encoding_form and in_out == 'in':
+            grad_norm = torch.norm(self.state_gradients()[0], 2, 1, True)
+            norm_mean_grad = self.state_gradients()[0]/grad_norm
+            encoding = norm_mean_grad if encoding is None else torch.cat((encoding, norm_mean_grad), 1)
+        if 'layer_norm_mean_gradient' in self.encoding_form and in_out == 'in':
+            mean_grad = self.state_gradients()[0]
+            layer_mean = mean_grad.mean(dim=0, keepdim=True)
+            layer_std = mean_grad.std(dim=0, keepdim=True)
+            norm_mean_grad = (mean_grad - layer_mean) / (layer_std + 1e-5)
+            encoding = norm_mean_grad if encoding is None else torch.cat((encoding, norm_mean_grad), 1)
         if 'log_var_gradient' in self.encoding_form and in_out == 'in':
             encoding = self.state_gradients()[1] if encoding is None else torch.cat((encoding, self.state_gradients()[1]), 1)
+        if 'l2_norm_log_var_gradient' in self.encoding_form and in_out == 'in':
+            #log_var_grad = self.state_gradients()[1]
+            #log_var_grad = log_var_grad - log_var_grad.mean(dim=0, keepdim=True)
+            grad_norm = torch.norm(self.state_gradients()[1], 2, 1, True)
+            norm_log_var_grad = self.state_gradients()[1]/grad_norm
+            encoding = norm_log_var_grad if encoding is None else torch.cat((encoding, norm_log_var_grad), 1)
+        if 'layer_norm_log_var_gradient' in self.encoding_form and in_out == 'in':
+            log_var_grad = self.state_gradients()[1]
+            layer_mean = log_var_grad.mean(dim=0, keepdim=True)
+            layer_std = log_var_grad.std(dim=0, keepdim=True)
+            norm_log_var_grad = (log_var_grad - layer_mean) / (layer_std + 1e-5)
+            encoding = norm_log_var_grad if encoding is None else torch.cat((encoding, norm_log_var_grad), 1)
         if 'gradient' in self.encoding_form and in_out == 'in':
             encoding = torch.cat(self.state_gradients(), 1) if encoding is None else torch.cat([encoding] + self.state_gradients(), 1)
+        if 'l2_norm_gradient' in self.encoding_form and in_out == 'in':
+            norm_mean_grad = self.state_gradients()[0] / torch.norm(self.state_gradients()[0], 2, 1, True)
+            norm_log_var_grad = self.state_gradients()[1] / torch.norm(self.state_gradients()[1], 2, 1, True)
+            norm_state_gradients = [norm_mean_grad, norm_log_var_grad]
+            encoding = torch.cat(norm_state_gradients, 1) if encoding is None else torch.cat([encoding] + norm_state_gradients, 1)
         if 'log_gradient' in self.encoding_form and in_out == 'in':
             log_grads = torch.log(torch.cat(self.state_gradients(), 1).abs() + 1e-5)
             encoding = log_grads if encoding is None else torch.cat((encoding, log_grads), 1)
@@ -712,19 +886,26 @@ class DenseLatentLevel(object):
     def encode(self, input):
         # encode the input, possibly with errors, concatenate any deterministic units
         encoded = self.encoder(self.get_encoding(input, 'in'))
-        output = self.get_encoding(self.latent.encode(encoded), 'out')
+        output = self.get_encoding(self.latent.encode(encoded).mean(dim=1), 'out')
         if self.deterministic_encoder:
             det = self.deterministic_encoder(encoded)
             output = torch.cat((det, output), 1)
         return output
 
-    def decode(self, input, generate=False):
+    def decode(self, input, n_samples, generate=False):
         # decode the input, sample the latent variable, concatenate any deterministic units
+        # reshape input to put samples in batch dimension
+        batch_size = input.size()[0]
+        input = input.view(-1, input.size()[2])
         decoded = self.decoder(input)
-        sample = self.latent.decode(decoded, generate=generate)
+        # reshape back into samples in dim 1
+        decoded = decoded.view(batch_size, n_samples, -1)
+        sample = self.latent.decode(decoded, n_samples, generate=generate)
         if self.deterministic_decoder:
+            decoded = decoded.view(-1, decoded.size()[2])
             det = self.deterministic_decoder(decoded)
-            sample = torch.cat((sample, det), 1)
+            det = det.view(batch_size, n_samples, -1)
+            sample = torch.cat((sample, det), dim=2)
         return sample
 
     def kl_divergence(self):

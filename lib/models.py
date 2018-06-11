@@ -10,7 +10,9 @@ from modules import Dense, MultiLayerPerceptron, DenseGaussianVariable, DenseLat
 
 def get_model(train_config, arch, data_loader):
     if train_config['resume_experiment'] != '' and train_config['resume_experiment'] is not None:
-        return load_model_checkpoint()
+        model = load_model_checkpoint(cuda_device=train_config['cuda_device'])
+        model.cuda(train_config['cuda_device'])
+        return model
     elif arch['model_form'] == 'dense':
         return DenseLatentVariableModel(train_config, arch, data_loader)
     elif arch['model_form'] == 'conv':
@@ -26,6 +28,7 @@ class DenseLatentVariableModel(object):
         self.single_output_variance = arch['single_output_variance']
         self.posterior_form = arch['posterior_form']
         self.batch_size = train_config['batch_size']
+        self.n_training_samples = train_config['n_samples']
         self.kl_min = train_config['kl_min']
         self.concat_variables = arch['concat_variables']
         self.top_size = arch['top_size']
@@ -109,10 +112,10 @@ class DenseLatentVariableModel(object):
 
         # construct the output distribution
         if self.output_distribution == 'bernoulli':
-            self.output_dist = Bernoulli(None)
+            self.output_dist = Bernoulli(self.input_size, None)
             self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity='sigmoid', weight_norm=arch['weight_norm_dec'])
         elif self.output_distribution == 'gaussian':
-            self.output_dist = DiagonalGaussian(None, None)
+            self.output_dist = DiagonalGaussian(self.input_size, None, None)
             non_lin = 'linear' if arch['whiten_input'] else 'sigmoid'
             self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity=non_lin, weight_norm=arch['weight_norm_dec'])
             if self.constant_variances:
@@ -154,19 +157,59 @@ class DenseLatentVariableModel(object):
                 encoding_size += latent_size
             if 'mean' in _self.encoding_form and not lower_level:
                 encoding_size += _arch['n_latent'][_level_num]
+            if 'l2_norm_mean' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'layer_norm_mean' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'mean_gradient' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'l2_norm_mean_gradient' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'layer_norm_mean_gradient' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'log_var_gradient' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'l2_norm_log_var_gradient' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'layer_norm_log_var_gradient' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
             if 'log_var' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'l2_norm_log_var' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'layer_norm_log_var' in _self.encoding_form and not lower_level:
                 encoding_size += _arch['n_latent'][_level_num]
             if 'var' in _self.encoding_form and not lower_level:
                 encoding_size += _arch['n_latent'][_level_num]
             if 'bottom_error' in _self.encoding_form:
                 encoding_size += latent_size
+            if 'l2_norm_bottom_error' in _self.encoding_form:
+                encoding_size += latent_size
+            if 'layer_norm_bottom_error' in _self.encoding_form:
+                encoding_size += latent_size
             if 'bottom_norm_error' in _self.encoding_form:
+                encoding_size += latent_size
+            if 'l2_norm_bottom_norm_error' in _self.encoding_form:
+                encoding_size += latent_size
+            if 'layer_norm_bottom_norm_error' in _self.encoding_form:
                 encoding_size += latent_size
             if 'top_error' in _self.encoding_form and not lower_level:
                 encoding_size += _arch['n_latent'][_level_num]
+            if 'l2_norm_top_error' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'layer_norm_top_error' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
             if 'top_norm_error' in _self.encoding_form and not lower_level:
                 encoding_size += _arch['n_latent'][_level_num]
+            if 'l2_norm_top_norm_error' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+            if 'layer_norm_top_norm_error' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
             if 'gradient' in _self.encoding_form and not lower_level:
+                encoding_size += _arch['n_latent'][_level_num]
+                if self.posterior_form == 'gaussian':
+                    encoding_size += _arch['n_latent'][_level_num]
+            if 'l2_norm_gradient' in _self.encoding_form and not lower_level:
                 encoding_size += _arch['n_latent'][_level_num]
                 if self.posterior_form == 'gaussian':
                     encoding_size += _arch['n_latent'][_level_num]
@@ -257,23 +300,37 @@ class DenseLatentVariableModel(object):
         if 'posterior' in self.encoding_form:
             encoding = input if self.whitening_matrix is not None else input - 0.5
         if 'bottom_error' in self.encoding_form:
-            error = input - self.output_dist.mean.detach()
+            error = input - self.output_dist.mean.detach().mean(dim=1)
             encoding = error if encoding is None else torch.cat((encoding, error), dim=1)
+        if 'norm_bottom_error' in self.encoding_form:
+            error = input - self.output_dist.mean.detach().mean(dim=1)
+            norm_error = error / torch.norm(error, 2, 1, True)
+            encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), dim=1)
         if 'log_bottom_error' in self.encoding_form:
-            log_error = torch.log(torch.abs(input - self.output_dist.mean.detach()))
+            log_error = torch.log(torch.abs(input - self.output_dist.mean.detach().mean(dim=1)))
             encoding = log_error if encoding is None else torch.cat((encoding, log_error), dim=1)
         if 'sign_bottom_error' in self.encoding_form:
             sign_error = torch.sign(input - self.output_dist.mean.detach())
             encoding = sign_error if encoding is None else torch.cat((encoding, sign_error), dim=1)
         if 'bottom_norm_error' in self.encoding_form:
-            error = input - self.output_dist.mean.detach()
+            error = input - self.output_dist.mean.detach().mean(dim=1)
             norm_error = None
             if self.output_distribution == 'gaussian':
-                norm_error = error / torch.exp(self.output_dist.log_var.detach())
+                norm_error = error / torch.exp(self.output_dist.log_var.detach().mean(dim=1))
             elif self.output_distribution == 'bernoulli':
-                mean = self.output_dist.mean.detach()
+                mean = self.output_dist.mean.detach().mean(dim=1)
                 norm_error = error * torch.exp(- torch.log(mean + 1e-5) - torch.log(1 - mean + 1e-5))
             encoding = norm_error if encoding is None else torch.cat((encoding, norm_error), dim=1)
+        if 'norm_bottom_norm_error' in self.encoding_form:
+            error = input - self.output_dist.mean.detach().mean(dim=1)
+            norm_error = None
+            if self.output_distribution == 'gaussian':
+                norm_error = error / torch.exp(self.output_dist.log_var.detach().mean(dim=1))
+            elif self.output_distribution == 'bernoulli':
+                mean = self.output_dist.mean.detach().mean(dim=1)
+                norm_error = error * torch.exp(- torch.log(mean + 1e-5) - torch.log(1 - mean + 1e-5))
+            norm_norm_error = norm_error / torch.norm(norm_error, 2, 1, True)
+            encoding = norm_norm_error if encoding is None else torch.cat((encoding, norm_norm_error), dim=1)
         return encoding
 
     def encode(self, input):
@@ -294,38 +351,46 @@ class DenseLatentVariableModel(object):
                 else:
                     h = latent_level.encode(h)
 
-    def decode(self, generate=False):
+    def decode(self, n_samples=0, generate=False):
         """
         Decodes the posterior (prior) estimate to get a reconstruction (sample).
+        :param n_samples: number of samples to decode
         :param generate: flag to generate or reconstruct the data
         :return output distribution of reconstruction/sample
         """
-        h = Variable(torch.zeros(self.batch_size, self.top_size))
+        if n_samples == 0:
+            n_samples = self.n_training_samples
+        h = Variable(torch.zeros(self.batch_size, n_samples, self.top_size))
         if self._cuda_device is not None:
             h = h.cuda(self._cuda_device)
         concat = False
         for latent_level in self.levels[::-1]:
             if self.concat_variables and concat:
-                h = torch.cat([h, latent_level.decode(h, generate)], dim=1)
+                h = torch.cat([h, latent_level.decode(h, n_samples, generate)], dim=2)
             else:
-                h = latent_level.decode(h, generate)
+                h = latent_level.decode(h, n_samples, generate)
             concat = True
 
+        h = h.view(-1, h.size()[2])
         h = self.output_decoder(h)
-        #self.output_dist.mean = self.process_output(self.mean_output(h)) / 255.
-        self.output_dist.mean = self.mean_output(h)
+        # self.output_dist.mean = self.process_output(self.mean_output(h)) / 255.
+        mean_out = self.mean_output(h)
+        mean_out = mean_out.view(self.batch_size, n_samples, self.input_size)
+        self.output_dist.mean = mean_out
 
         if self.output_distribution == 'gaussian':
             if self.constant_variances:
                 if self.single_output_variance:
-                    self.output_dist.log_var = torch.clamp(self.trainable_log_var * Variable(torch.ones(self.batch_size, self.input_size).cuda(self._cuda_device)), -7, 15)
+                    self.output_dist.log_var = torch.clamp(self.trainable_log_var * Variable(torch.ones(self.batch_size, n_samples, self.input_size).cuda(self._cuda_device)), -7, 15)
                 else:
-                    self.output_dist.log_var = torch.clamp(self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1), -7., 15)
+                    self.output_dist.log_var = torch.clamp(self.trainable_log_var.view(1, 1, -1).repeat(self.batch_size, n_samples, 1), -7., 15)
             else:
-                self.output_dist.log_var = torch.clamp(self.log_var_output(h), -7., 15)
+                log_var_out = self.log_var_output(h)
+                log_var_out = log_var_out.view(self.batch_size, n_samples, self.input_size)
+                self.output_dist.log_var = torch.clamp(log_var_out, -7., 15)
 
-        self.reconstruction = 255. * self.output_dist.mean
-        #self.reconstruction = self.process_output(self.output_dist.mean)
+        self.reconstruction = 255. * self.output_dist.mean[:, 0, :]
+        # self.reconstruction = self.process_output(self.output_dist.mean)
         return self.output_dist
 
     def kl_divergences(self, averaged=False):
@@ -335,13 +400,12 @@ class DenseLatentVariableModel(object):
         :return list of KL divergences at each level
         """
         kl = []
-        if len(self.levels) > 1:
-            for latent_level in self.levels:
-                kl.append(torch.clamp(latent_level.kl_divergence(), min=self.kl_min).sum(1))
-        else:
-            kl.append(self.levels[0].latent.analytical_kl().sum(1))
+        for latent_level in range(len(self.levels)-1):
+            # for latent_level in range(len(self.levels)):
+            kl.append(torch.clamp(self.levels[latent_level].kl_divergence(), min=self.kl_min).sum(dim=2))
+        kl.append(self.levels[-1].latent.analytical_kl().sum(dim=2))
         if averaged:
-            [level_kl.mean(0) for level_kl in kl]
+            return [level_kl.mean() for level_kl in kl]
         else:
             return kl
 
@@ -354,14 +418,16 @@ class DenseLatentVariableModel(object):
         """
         if self._cuda_device is not None:
             input = input.cuda(self._cuda_device)
-        input = input.view(-1, self.input_size) / 255.
-        #input = self.process_input(input.view(-1, self.input_size))
+        input = input.view(-1, 1, self.input_size) / 255.
+        # input = self.process_input(input.view(-1, self.input_size))
+        n_samples = self.output_dist.mean.data.shape[1]
+        input = input.repeat(1, n_samples, 1)
         log_prob = self.output_dist.log_prob(sample=input)
         if self.output_distribution == 'gaussian':
             log_prob = log_prob - np.log(256.)
-        log_prob = log_prob.sum(1)
+        log_prob = log_prob.sum(dim=2)
         if averaged:
-            return log_prob.mean(0)
+            return log_prob.mean()
         else:
             return log_prob
 
@@ -374,9 +440,9 @@ class DenseLatentVariableModel(object):
         """
         cond_like = self.conditional_log_likelihoods(input)
         kl = sum(self.kl_divergences())
-        lower_bound = cond_like - self.kl_weight * kl
+        lower_bound = (cond_like - self.kl_weight * kl).mean(dim=1)  # average across sample dimension
         if averaged:
-            return lower_bound.mean(0)
+            return lower_bound.mean()
         else:
             return lower_bound
 
@@ -386,13 +452,15 @@ class DenseLatentVariableModel(object):
         :param input: the input data
         :param averaged: whether to average across the batch dimension
         """
-        cond_log_like = self.conditional_log_likelihoods(input)
-        kl = self.kl_divergences()
-        lower_bound = cond_log_like - self.kl_weight * sum(kl)
+        cll = self.conditional_log_likelihoods(input)
+        cond_log_like = cll.mean(dim=1)
+        kld = self.kl_divergences()
+        kl_div = [kl.mean(dim=1) for kl in kld]
+        lower_bound = (cll - self.kl_weight * sum(kld)).mean(dim=1)
         if averaged:
-            return lower_bound.mean(0), cond_log_like.mean(0), [level_kl.mean(0) for level_kl in kl]
+            return lower_bound.mean(), cond_log_like.mean(), [level_kl.mean() for level_kl in kl_div]
         else:
-            return lower_bound, cond_log_like, kl
+            return lower_bound, cond_log_like, kl_div
 
     def state_gradients(self):
         """
