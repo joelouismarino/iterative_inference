@@ -98,6 +98,7 @@ class FullyConnectedModel(Model):
                                                     'non_linearity': 'sigmoid'})
         elif output_dist.lower() == 'normal':
             self.output_dist = Normal()
+            self.output_interval = 1. / 256
             self.output_mean = FullyConnectedLayer({'n_in': n_units_gen[0],
                                                     'n_out': output_size,
                                                     'non_linearity': 'sigmoid'})
@@ -211,13 +212,15 @@ class FullyConnectedModel(Model):
             self.output_dist.log_var = self.output_log_var(decoding)
         return self.output_dist.sample()
 
-    def re_init(self):
+    def re_init(self, batch_size=1, n_samples=1):
         """
         Method for reinitializing the latent variables.
         """
-        self.generate(gen=True)
         for level in self.latent_levels:
-            level.latent.re_init()
+            level.latent.re_init(batch_size)
+        self.generate(gen=True, n_samples=n_samples)
+        for level in self.latent_levels:
+            level.latent.re_init(batch_size)
 
     def inference_parameters(self):
         """

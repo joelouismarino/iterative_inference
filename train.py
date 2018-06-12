@@ -19,13 +19,16 @@ train_data, val_data, label_names = load_data(data_config, train_config['batch_s
 # load the model
 model_config['output_size'] = np.prod(next(iter(train_data))[0].shape[1:])
 model = load_model(model_config)
+model.cuda(run_config['cuda_device'])
 
 # load the optimizers, schedulers
 optimizers, schedulers = load_opt_sched(train_config, model)
 
 # train, validate, step
 while True:
+    print('Training...')
     out = train(model, train_data, optimizers)
+    import ipdb; ipdb.set_trace()
     if run_config['log']:
         logger.log(out, 'Train')
     if run_config['plot']:

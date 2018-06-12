@@ -76,22 +76,28 @@ class Model(nn.Module):
             observation (tensor): observation to evaluate
             averaged (boolean): whether to average over the batch dimension
         """
-        # add sample dimension
-        if len(observation.data.shape) in [2, 4]:
-            observation = observation.unsqueeze(1)
+        # add batch dimension to output if necessary
+        batch_size = observation.shape[0]
+        if self.output_dist.mean.shape[0] == 1:
+            self.output_dist.mean = self.output_dist.mean.repeat(batch_size, 1, 1)
+            if type(self.output_dist) == Normal:
+                self.output_dist.log_var = self.output_dist.log_var.repeat(batch_size, 1, 1)
+
+        # add sample dimension to observation if necessary
+        n_samples = self.output_dist.mean.shape[1]
+        if len(observation.shape) == 2:
+            observation = observation.unsqueeze(1).repeat(1, n_samples, 1)
 
         if self.output_interval is not None:
             observation = (observation, observation + self.output_interval)
 
         log_prob = self.output_dist.log_prob(value=observation)
 
-        while len(log_prob.data.shape) > 2:
-            # sum over all of the spatial dimensions
-            last_dim = len(log_prob.data.shape) - 1
-            log_prob = log_prob.sum(last_dim)
+        # sum over the spatial dimension
+        log_prob = log_prob.sum(dim=2)
 
         # average over sample dimension
-        log_prob = log_prob.mean(1)
+        log_prob = log_prob.mean(dim=1)
 
         if averaged:
             # average over batch dimension
@@ -123,6 +129,14 @@ class Model(nn.Module):
             observation (tensor): observation to evaluate
             averaged (boolean): whether to average over the batch dimension
         """
+        # add batch dimension to variables if necessary
+        batch_size = observation.shape[0]
+        # if self.output_dist.mean.shape[0] != batch_size:
+        #     for level in self.latent_levels:
+        #         level.latent.approx_post.mean = level.latent.approx_post.mean.repeat(batch_size, 1)
+        #         level.latent.approx_post.log_var = level.latent.approx_post.log_var.repeat(batch_size, 1)
+        #         level.latent.prior.mean = level.latent.prior.mean.repeat(batch_size, 1, 1)
+        #         level.latent.prior.log_var = level.latent.prior.log_var.repeat(batch_size, 1, 1)
         cond_log_like = self.conditional_log_likelihoods(observation, averaged=False)
         kl = self.kl_divergences(averaged=False)
         elbo = cond_log_like - anneal_weight * sum(kl)

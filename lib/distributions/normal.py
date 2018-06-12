@@ -1,7 +1,6 @@
 import math
 import torch
 import torch.nn as nn
-import util.dtypes as dt
 from distribution import Distribution
 from torch.autograd import Variable
 
@@ -14,10 +13,10 @@ class Normal(Distribution):
         mean (tensor): the mean of the density
         log_var (tensor): the log variance of the density
     """
-    def __init__(self, mean=None, log_var=None):
+    def __init__(self, mean=None, log_var=None, n_variables=1):
         super(Normal, self).__init__()
-        self.mean_reset_value = nn.Parameter(dt.zeros(1))
-        self.log_var_reset_value = nn.Parameter(dt.zeros(1))
+        self.mean_reset_value = nn.Parameter(torch.zeros(n_variables))
+        self.log_var_reset_value = nn.Parameter(torch.zeros(n_variables))
         self.mean = mean
         self.log_var = log_var
         self._sample = None
@@ -86,7 +85,7 @@ class Normal(Distribution):
             std = std.unsqueeze(1).repeat(1, n_samples, 1)
         return (1 + torch.erf((value - mean) / (math.sqrt(2) * std).add(1e-5))).mul_(0.5)
 
-    def re_init(self, mean_value=None, log_var_value=None):
+    def re_init(self, mean_value=None, log_var_value=None, batch_size=1, sample_dim=False):
         """
         Re-initializes the distribution.
 
@@ -94,28 +93,42 @@ class Normal(Distribution):
             mean_value (tensor): the value to set as the mean, defaults to zero
             log_var_value (tensor): the value to set as the log variance,
                                     defaults to zero
+            batch_size (int): the batch size for the values
+            sample_dim (boolean): whether or not to include a sample dimension
         """
-        self.re_init_mean(mean_value)
-        self.re_init_log_var(log_var_value)
+        self.re_init_mean(mean_value, batch_size, sample_dim)
+        self.re_init_log_var(log_var_value, batch_size, sample_dim)
 
-    def re_init_mean(self, value):
+    def re_init_mean(self, value, batch_size=1, sample_dim=False):
         """
         Resets the mean to a particular value.
 
         Args:
             value (tensor): the value to set as the mean, defaults to zero
+            batch_size (int): the batch size of the mean
+            sample_dim (boolean): whether or not to include a sample dimension
         """
-        mean = value if value is not None else self.mean_reset_value.data.unsqueeze(1)
+        mean = value if value is not None else self.mean_reset_value.unsqueeze(0)
+        if mean.shape[0] != batch_size:
+            mean = mean[:1].repeat(batch_size, 1)
+        if sample_dim:
+            mean = mean.unsqueeze(1)
         self.mean = Variable(mean, requires_grad=True)
         self._sample = None
 
-    def re_init_log_var(self, value):
+    def re_init_log_var(self, value, batch_size=1, sample_dim=False):
         """
         Resets the log variance to a particular value.
 
         Args:
             value (tensor): the value to set as the log variance, defaults to zero
+            batch_size (int): the batch size of the log variance
+            sample_dim (boolean): whether or not to include a sample dimension
         """
-        log_var = value if value is not None else self.log_var_reset_value.data.unsqueeze(1)
+        log_var = value if value is not None else self.log_var_reset_value.unsqueeze(0)
+        if log_var.shape[0] != batch_size:
+            log_var = log_var[:1].repeat(batch_size, 1)
+        if sample_dim:
+            log_var = log_var.unsqueeze(1)
         self.log_var = Variable(log_var, requires_grad=True)
         self._sample = None

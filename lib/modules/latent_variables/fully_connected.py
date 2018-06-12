@@ -4,7 +4,6 @@ from lib.distributions import Normal
 from latent_variable import LatentVariable
 from lib.modules.layers import FullyConnectedLayer
 from lib.modules.networks import FullyConnectedNetwork
-from lib.modules.misc import LayerNorm
 
 
 class FullyConnectedLatentVariable(LatentVariable):
@@ -44,10 +43,10 @@ class FullyConnectedLatentVariable(LatentVariable):
             self.prior_log_var = FullyConnectedLayer({'n_in': n_in[1],
                                                       'n_out': n_variables})
         # distributions
-        self.approx_post = Normal()
-        self.prior = Normal()
+        self.approx_post = Normal(n_variables=n_variables)
+        self.prior = Normal(n_variables=n_variables)
         self.approx_post.re_init()
-        self.prior.re_init()
+        self.prior.re_init(sample_dim=True)
 
     def infer(self, input):
         """
@@ -91,24 +90,26 @@ class FullyConnectedLatentVariable(LatentVariable):
             self.prior.log_var = torch.clamp(self.prior_log_var(input).view(b, s, -1), -15, 5)
         dist = self.prior if gen else self.approx_post
         sample = dist.sample(n_samples, resample=True)
-        sample = sample.detach() if self.detach else sample
         return sample
 
-    def re_init(self):
+    def re_init(self, batch_size):
         """
         Method to reinitialize the approximate posterior and prior over the variable.
         """
         # TODO: this is wrong. we shouldnt set the posterior to the prior then zero out the prior...
-        self.re_init_approx_posterior()
-        self.prior.re_init()
+        self.re_init_approx_posterior(batch_size)
+        self.prior.re_init(batch_size=batch_size, sample_dim=True)
 
-    def re_init_approx_posterior(self):
+    def re_init_approx_posterior(self, batch_size):
         """
         Method to reinitialize the approximate posterior.
         """
         mean = self.prior.mean.detach().mean(dim=1)
         log_var = self.prior.log_var.detach().mean(dim=1)
-        self.approx_post.re_init(mean, log_var)
+        self.approx_post.re_init(mean, log_var, batch_size=batch_size)
+        # retain the gradients (for inference)
+        # self.approx_post.mean.retain_grad()
+        # self.approx_post.log_var.retain_grad()
 
     def error(self, averaged=True):
         """
@@ -118,12 +119,12 @@ class FullyConnectedLatentVariable(LatentVariable):
             averaged (boolean): whether or not to average over samples
         """
         sample = self.approx_post.sample()
-        n_samples = sample.data.shape[1]
+        n_samples = sample.shape[1]
         prior_mean = self.prior.mean.detach()
-        if len(prior_mean.data.shape) == 2:
+        if len(prior_mean.shape) == 2:
             prior_mean = prior_mean.unsqueeze(1).repeat(1, n_samples, 1)
         prior_log_var = self.prior.log_var.detach()
-        if len(prior_log_var.data.shape) == 2:
+        if len(prior_log_var.shape) == 2:
             prior_log_var = prior_log_var.unsqueeze(1).repeat(1, n_samples, 1)
         n_error = (sample - prior_mean) / torch.exp(prior_log_var + 1e-7)
         if averaged:
@@ -163,6 +164,6 @@ class FullyConnectedLatentVariable(LatentVariable):
         assert self.approx_post.mean.grad is not None, 'Approximate posterior gradients are None.'
         grads = [self.approx_post.mean.grad.detach()]
         grads += [self.approx_post.log_var.grad.detach()]
-        for grad in grads:
-            grad.volatile = False
+        # for grad in grads:
+        #     grad.volatile = False
         return grads

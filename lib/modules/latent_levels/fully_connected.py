@@ -1,7 +1,9 @@
+import torch
 import torch.nn as nn
 from latent_level import LatentLevel
 from lib.modules.networks import FullyConnectedNetwork
 from lib.modules.latent_variables import FullyConnectedLatentVariable
+from lib.modules.misc import LayerNorm
 
 
 class FullyConnectedLatentLevel(LatentLevel):
@@ -98,12 +100,12 @@ class FullyConnectedLatentLevel(LatentLevel):
             input = self.generative_model(input.view(b * s, n)).view(b, s, -1)
         return self.latent.generate(input, gen=gen, n_samples=n_samples)
 
-    def re_init(self):
+    def re_init(self, batch_size):
         """
         Method to reinitialize the latent level (latent variable and any state
         variables in the generative / inference procedures).
         """
-        self.latent.re_init()
+        self.latent.re_init(batch_size)
         if 're_init' in dir(self.inference_model):
             self.inference_model.re_init()
         if 're_init' in dir(self.generative_model):
