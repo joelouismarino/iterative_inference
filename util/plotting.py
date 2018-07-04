@@ -302,7 +302,7 @@ def plot_output_variance(cond_like, epoch, handle_dict):
 
 def plot_train(func):
     """Wrapper around training function to plot the outputs in corresponding visdom windows."""
-    def plotting_func(model, train_config, data_loader, epoch, handle_dict, optimizers):
+    def plotting_func(model, train_config, arch, data_loader, epoch, handle_dict, optimizers):
         output_dict = func(model, train_config, data_loader, epoch, optimizers)
         metrics = [output_dict['avg_elbo'], output_dict['avg_cond_log_like'], output_dict['avg_kl']]
         plot_average_metrics(metrics, epoch, handle_dict, 'Train')
@@ -315,7 +315,7 @@ def plot_train(func):
 
 def plot_model_vis(func):
     """Wrapper around run function to plot the outputs in corresponding visdom windows."""
-    def plotting_func(model, train_config, data_loader, epoch, handle_dict, vis=False, eval=False, label_names=None):
+    def plotting_func(model, train_config, arch, data_loader, epoch, handle_dict, vis=False, eval=False, label_names=None):
         output_dict = func(model, train_config, data_loader, epoch, vis=vis, eval=eval)
         # plot average metrics on validation set
         average_elbo = np.mean(output_dict['total_elbo'][:, -1], axis=0)
@@ -360,4 +360,3 @@ def plot_model_vis(func):
 
         return output_dict, averages, handle_dict
     return plotting_func
-

@@ -4,6 +4,7 @@ import cPickle as pickle
 import dill
 import torch
 from time import strftime
+
 from cfg.config import arch
 
 global log_path
@@ -43,7 +44,7 @@ def log_train(func):
     """Wrapper to log train metrics."""
     global log_path
 
-    def log_func(model, train_config, data, epoch, optimizers):
+    def log_func(model, train_config, arch, data, epoch, optimizers):
         output_dict = func(model, train_config, data, epoch, optimizers)
         update_metric(os.path.join(log_path, 'metrics', 'train_elbo.p'), (epoch, output_dict['avg_elbo']))
         update_metric(os.path.join(log_path, 'metrics', 'train_cond_log_like.p'), (epoch, output_dict['avg_cond_log_like']))
@@ -58,7 +59,7 @@ def log_vis(func):
     """Wrapper to log metrics and visualizations."""
     global log_path
 
-    def log_func(model, train_config, data_loader, epoch, vis=False, eval=False):
+    def log_func(model, train_config, arch, data_loader, epoch, vis=False, eval=False):
         output_dict = func(model, train_config, data_loader, vis=vis, eval=eval)
         update_metric(os.path.join(log_path, 'metrics', 'val_elbo.p'), (epoch, np.mean(output_dict['total_elbo'][:, -1], axis=0)))
         update_metric(os.path.join(log_path, 'metrics', 'val_cond_log_like.p'), (epoch, np.mean(output_dict['total_cond_log_like'][:, -1], axis=0)))
@@ -137,4 +138,3 @@ def load_model_checkpoint(epoch=-1, cuda_device=0):
     return torch.load(os.path.join(log_path, 'checkpoints', 'epoch_'+str(epoch)+'_model.ckpt'),
                       map_location={'cuda:0': 'cuda:' + str(cuda_device), 'cuda:1': 'cuda:' + str(cuda_device),
                                     'cpu': 'cuda:' + str(cuda_device)})
-

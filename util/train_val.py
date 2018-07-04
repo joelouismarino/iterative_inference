@@ -3,13 +3,14 @@ from torch.autograd import Variable
 import numpy as np
 import scipy.misc
 from random import shuffle
-from cfg.config import train_config, arch
+
+# from cfg.config import train_config, arch
 
 from logs import log_train, log_vis
 from plotting import plot_images, plot_line, plot_train, plot_model_vis
 
 
-def train_on_batch(model, batch, n_iterations, optimizers, train_enc=True, train_dec=True):
+def train_on_batch(model, batch, n_iterations, optimizers, train_config, arch, train_enc=True, train_dec=True):
 
     output_dict = dict()
 
@@ -111,7 +112,7 @@ def train_on_batch(model, batch, n_iterations, optimizers, train_enc=True, train
     return output_dict
 
 
-def run_on_batch(model, batch, n_iterations, vis=False):
+def run_on_batch(model, batch, n_iterations, train_config, arch, vis=False):
     """Runs the model on a single batch. If visualizing, stores posteriors, priors, and output distributions."""
 
     output_dict = dict()
@@ -256,7 +257,7 @@ def em_on_batch(model, batch, n_iterations, opt):
 
 @plot_model_vis
 @log_vis
-def run(model, train_config, data_loader, vis=False, eval=False):
+def run(model, train_config, arch, data_loader, vis=False, eval=False):
     """Runs the model on a set of data."""
 
     output_dict = dict()
@@ -294,7 +295,7 @@ def run(model, train_config, data_loader, vis=False, eval=False):
                 rand_values = Variable(rand_values)
             batch = torch.clamp(batch + rand_values, 0., 255.)
 
-        batch_output = run_on_batch(model, batch, n_iterations, vis)
+        batch_output = run_on_batch(model, batch, n_iterations, train_config, arch, vis)
 
         data_index = batch_index * batch_size
         total_elbo[data_index:data_index + batch_size, :] = batch_output['total_elbo']
@@ -411,7 +412,7 @@ def run(model, train_config, data_loader, vis=False, eval=False):
 
 @plot_train
 @log_train
-def train(model, train_config, data_loader, epoch, optimizers):
+def train(model, train_config, arch, data_loader, epoch, optimizers):
 
     output_dict = dict()
 
@@ -448,9 +449,9 @@ def train(model, train_config, data_loader, epoch, optimizers):
             batch = torch.clamp(batch + rand_values, 0., 255.)
 
         for _ in range(train_config['encoder_decoder_train_multiple']-1):
-            train_on_batch(model, batch, train_config['n_iterations'], optimizers, train_enc=True, train_dec=False)
+            train_on_batch(model, batch, train_config['n_iterations'], optimizers, train_config, arch, train_enc=True, train_dec=False)
 
-        batch_output = train_on_batch(model, batch, train_config['n_iterations'], optimizers)
+        batch_output = train_on_batch(model, batch, train_config['n_iterations'], optimizers  train_config, arch)
 
         avg_elbo.append(batch_output['elbo'])
         avg_cond_log_like.append(batch_output['cond_log_like'])
