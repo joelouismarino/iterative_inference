@@ -1,9 +1,9 @@
 # training set-up
 train_config = {
-    'dataset': 'CIFAR_10',
-    'output_distribution': 'gaussian',
-    'batch_size': 128,
-    'n_samples': 10,
+    'dataset': 'rcv1',
+    'output_distribution': 'multinomial',
+    'batch_size': 512,
+    'n_samples': 1,
     'n_iterations': 1,
     'encoder_optimizer': 'adam',
     'decoder_optimizer': 'adam',
@@ -12,9 +12,9 @@ train_config = {
     'average_gradient': True,
     'encoder_decoder_train_multiple': 1,
     'kl_min': 0,
-    'kl_warm_up': True,
-    'cuda_device': 1,
-    'display_iter': 30,
+    'kl_warm_up': False,
+    'cuda_device': 0,
+    'display_iter': 5,
     'eval_iter': 2000,
     'resume_experiment': None
 }
@@ -29,7 +29,7 @@ arch = {
     'encoding_form': ['posterior'],
     'variable_update_form': 'direct',
 
-    'concat_variables': True,
+    'concat_variables': False,
     'posterior_form': 'gaussian',
     'whiten_input': False,
     'constant_prior_variances': False,
@@ -37,22 +37,22 @@ arch = {
     'learn_top_prior': False,
     'top_size': 1,
 
-    'n_latent': [1024, 512],
+    'n_latent': [512],
 
-    'n_det_enc': [0, 0],
-    'n_det_dec': [0, 0],
+    'n_det_enc': [0],
+    'n_det_dec': [0],
 
-    'n_layers_enc': [3, 3, 0],
-    'n_layers_dec': [1, 1, 1],
+    'n_layers_enc': [2, 0],
+    'n_layers_dec': [2, 1],
 
-    'n_units_enc': [2048, 2048, 0],
-    'n_units_dec': [2048, 2048, 1],
+    'n_units_enc': [512, 0],
+    'n_units_dec': [512, 1],
 
     'non_linearity_enc': 'elu',
     'non_linearity_dec': 'elu',
 
     'connection_type_enc': 'highway',
-    'connection_type_dec': 'highway',
+    'connection_type_dec': 'sequential',
 
     'batch_norm_enc': False,
     'batch_norm_dec': False,

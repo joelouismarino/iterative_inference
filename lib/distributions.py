@@ -288,3 +288,80 @@ class Bernoulli(object):
         if self.mean is not None:
             self.mean = self.mean.cpu()
         self._cuda_device = None
+
+
+class Multinomial(object):
+
+    def __init__(self, n_variables, mean=None):
+        """
+        Creates a Multinomial distribution.
+        :param n_variables: the size (number of dimensions) of the distribution.
+        :param mean: mean of the Multinomial distribution.
+        """
+        self.n_variables = n_variables
+        self.mean = mean
+        self._sample = None
+        self._cuda_device = None
+
+    def sample(self, n_samples=1, resample=False):
+        pass
+
+    def log_prob(self, sample):
+        maxval  = torch.max(self.mean, dim=2, keepdim=True)[0]
+        logsoftmax  = self.mean - (maxval + torch.log(torch.sum(torch.exp(self.mean - maxval), dim=2, keepdim=True) + 1e-6))
+        return logsoftmax * sample
+
+    def reset_mean(self, value=None):
+        """
+        Resets the mean to a particular value.
+        :param value: the value to set as the mean, defaults to zero
+        :return: None
+        """
+        assert self.mean is not None or value is not None, 'Mean is None.'
+        mean = value if value is not None else torch.zeros(self.mean.size())
+        if self._cuda_device is not None:
+            mean = mean.cuda(self._cuda_device)
+        mean = Variable(mean, requires_grad=self.mean.requires_grad)
+        self.mean = mean
+        self._sample = None
+
+    def mean_trainable(self):
+        """
+        Makes the mean a trainable variable.
+        :return: None
+        """
+        assert self.mean is not None, 'Mean is None.'
+        self.mean = Variable(self.mean.data, requires_grad=True)
+
+    def mean_not_trainable(self):
+        """
+        Makes the mean a non-trainable variable.
+        :return: None
+        """
+        self.mean.requires_grad = False
+
+    def state_parameters(self):
+        """
+        Gets the state parameters for this variable.
+        :return: tuple of mean and log variance
+        """
+        return self.mean
+
+    def cuda(self, device_id):
+        """
+        Places the distribution on the GPU.
+        :param device_id: device on which to place the distribution
+        :return: None
+        """
+        if self.mean is not None:
+            self.mean = Variable(self.mean.data.cuda(device_id), requires_grad=self.mean.requires_grad)
+        self._cuda_device = device_id
+
+    def cpu(self):
+        """
+        Places the distribution on the CPU.
+        :return: None
+        """
+        if self.mean is not None:
+            self.mean = self.mean.cpu()
+        self._cuda_device = None

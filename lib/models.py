@@ -33,7 +33,7 @@ class DenseLatentVariableModel(object):
         self.concat_variables = arch['concat_variables']
         self.top_size = arch['top_size']
         self.input_size = np.prod(tuple(next(iter(data_loader))[0].size()[1:])).astype(int)
-        assert train_config['output_distribution'] in ['bernoulli', 'gaussian'], 'Output distribution not recognized.'
+        assert train_config['output_distribution'] in ['bernoulli', 'gaussian', 'multinomial'], 'Output distribution not recognized.'
         self.output_distribution = train_config['output_distribution']
         self.reconstruction = None
         self.kl_weight = 1.
@@ -114,6 +114,9 @@ class DenseLatentVariableModel(object):
         if self.output_distribution == 'bernoulli':
             self.output_dist = Bernoulli(self.input_size, None)
             self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity='sigmoid', weight_norm=arch['weight_norm_dec'])
+        elif self.output_distribution == 'multinomial':
+            self.output_dist = Multinomial(self.input_size, None)
+            self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity='linear', weight_norm=arch['weight_norm_dec'])
         elif self.output_distribution == 'gaussian':
             self.output_dist = DiagonalGaussian(self.input_size, None, None)
             non_lin = 'linear' if arch['whiten_input'] else 'sigmoid'

@@ -304,6 +304,12 @@ def load_data(dataset, data_path):
                         os.rename(os.path.join(root, f), os.path.join(root, 'images', f))
         val = os.path.join(data_path, 'imagenet_64', 'valid_64x64')
 
+    elif dataset in ['RCV1', 'rcv1']:
+        from sparse_utils import loadSparseHDF5
+        h5file = os.path.join(data_path, 'optvaedatasets', 'rcv2_miao', 'rcv2.h5')
+        train = loadSparseHDF5('train', h5file)
+        val = loadSparseHDF5('test', h5file)
+
     else:
         raise Exception('Dataset ' + str(dataset) + ' not found.')
 

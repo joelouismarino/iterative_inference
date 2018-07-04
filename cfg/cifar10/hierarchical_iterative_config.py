@@ -4,7 +4,7 @@ train_config = {
     'output_distribution': 'gaussian',
     'batch_size': 128,
     'n_samples': 10,
-    'n_iterations': 1,
+    'n_iterations': 5,
     'encoder_optimizer': 'adam',
     'decoder_optimizer': 'adam',
     'encoder_learning_rate': 0.0001,
@@ -12,8 +12,8 @@ train_config = {
     'average_gradient': True,
     'encoder_decoder_train_multiple': 1,
     'kl_min': 0,
-    'kl_warm_up': True,
-    'cuda_device': 1,
+    'kl_warm_up': False,
+    'cuda_device': 0,
     'display_iter': 30,
     'eval_iter': 2000,
     'resume_experiment': None
@@ -26,8 +26,8 @@ arch = {
     'encoder_type': 'inference_model',  # 'em', 'inference_model'
 
     'inference_model_type': 'feedforward',  # 'feedforward', 'recurrent'
-    'encoding_form': ['posterior'],
-    'variable_update_form': 'direct',
+    'encoding_form': ['posterior', 'layer_norm_mean_gradient', 'layer_norm_log_var_gradient', 'mean', 'log_var'],
+    'variable_update_form': 'highway',
 
     'concat_variables': True,
     'posterior_form': 'gaussian',
