@@ -7,10 +7,8 @@ from torch.utils.data import TensorDataset, DataLoader
 def load_torch_data(load_data_func):
     """Wrapper around load_data to instead use pytorch data loaders."""
 
-    def torch_loader(data_config, batch_size, shuffle=True, cuda_device=None, num_workers=1):
-        data_set = data_config['data_set']
-        data_path = data_config['data_path']
-        (train_data, val_data), (train_labels, val_labels), label_names = load_data_func(data_set, data_path)
+    def torch_loader(dataset, data_path, batch_size, shuffle=True, cuda_device=None, num_workers=1):
+        (train_data, val_data), (train_labels, val_labels), label_names = load_data_func(dataset, data_path)
 
         kwargs = {'num_workers': num_workers, 'pin_memory': True} if cuda_device is not None else {}
         kwargs['drop_last'] = True
@@ -28,3 +26,4 @@ def load_torch_data(load_data_func):
         return train_loader, val_loader, label_names
 
     return torch_loader
+

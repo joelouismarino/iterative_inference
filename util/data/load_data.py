@@ -9,6 +9,9 @@ from scipy.io import loadmat
 
 from load_torch_data import load_torch_data
 
+# todo: add label names to omniglot
+# todo: add labels to static binarized MNIST, omniglot
+
 
 @load_torch_data
 def load_data(dataset, data_path):
@@ -72,7 +75,7 @@ def load_data(dataset, data_path):
             with open(os.path.join(data_path, 'MNIST', 'train-images-idx3-ubyte'), 'wb') as f:
                 f.write(file_content)
             os.remove(os.path.join(data_path, 'MNIST', 'train-images-idx3-ubyte.gz'))
-        train = load_mnist_images_np(os.path.join(data_path, 'MNIST', 'train-images-idx3-ubyte')) / 255.
+        train = load_mnist_images_np(os.path.join(data_path, 'MNIST', 'train-images-idx3-ubyte'))
 
         if not os.path.exists(os.path.join(data_path, 'MNIST', 'train-labels-idx1-ubyte')):
             print 'Downloading MNIST training labels...'
@@ -92,7 +95,7 @@ def load_data(dataset, data_path):
             with open(os.path.join(data_path, 'MNIST', 't10k-images-idx3-ubyte'), 'wb') as f:
                 f.write(file_content)
             os.remove(os.path.join(data_path, 'MNIST', 't10k-images-idx3-ubyte.gz'))
-        val = load_mnist_images_np(os.path.join(data_path, 'MNIST', 't10k-images-idx3-ubyte')) / 255.
+        val = load_mnist_images_np(os.path.join(data_path, 'MNIST', 't10k-images-idx3-ubyte'))
 
         if not os.path.exists(os.path.join(data_path, 'MNIST', 't10k-labels-idx1-ubyte')):
             print 'Downloading MNIST validation labels...'
@@ -126,7 +129,7 @@ def load_data(dataset, data_path):
             lines = f.readlines()
         _train2 = np.array([[int(i) for i in line.split()] for line in lines]).astype('float32')
 
-        train = np.concatenate([_train1, _train2], axis=0).reshape((-1, 28, 28, 1))
+        train = 255 * np.concatenate([_train1, _train2], axis=0).reshape((-1, 28, 28, 1))
 
         # we don't have binarized MNIST labels
         train_labels = np.zeros((train.shape[0]))
@@ -137,7 +140,7 @@ def load_data(dataset, data_path):
 
         with open(os.path.join(data_path, 'static_binarized_MNIST', 'binarized_mnist_test.amat')) as f:
             lines = f.readlines()
-        val = np.array([[int(i) for i in line.split()] for line in lines]).astype('float32').reshape((-1, 28, 28, 1))
+        val = 255 * np.array([[int(i) for i in line.split()] for line in lines]).astype('float32').reshape((-1, 28, 28, 1))
 
         # we don't have binarized MNIST labels
         val_labels = np.zeros((val.shape[0]))
@@ -152,8 +155,8 @@ def load_data(dataset, data_path):
             print 'Downloading Omniglot images_background.zip...'
             urllib.urlretrieve('https://github.com/yburda/iwae/raw/master/datasets/OMNIGLOT/chardata.mat', os.path.join(data_path, 'omniglot', 'chardata.mat'))
         data = loadmat(os.path.join(data_path, 'omniglot', 'chardata.mat'))
-        train = data['data'].swapaxes(0,1).reshape((-1, 28, 28, 1)).astype('float32')
-        val = data['testdata'].swapaxes(0,1).reshape((-1, 28, 28, 1)).astype('float32')
+        train = 255. * data['data'].swapaxes(0,1).reshape((-1, 28, 28, 1)).astype('float32')
+        val = 255. * data['testdata'].swapaxes(0,1).reshape((-1, 28, 28, 1)).astype('float32')
         train_labels = np.zeros(train.shape[0])
         val_labels = np.zeros(val.shape[0])
 
@@ -182,10 +185,10 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'CIFAR_10'))
             tar.close()
         _train = [unpickle(os.path.join(data_path, 'CIFAR_10', 'cifar-10-batches-py', 'data_batch_' + str(i + 1))) for i in range(5)]
-        train = np.concatenate([_train[i]['data'] for i in range(5)]).astype('float32').reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2) / 255.
+        train = np.concatenate([_train[i]['data'] for i in range(5)]).astype('float32').reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2)
         train_labels = np.concatenate([_train[i]['labels'] for i in range(5)])
         _val = unpickle(os.path.join(data_path, 'CIFAR_10', 'cifar-10-batches-py', 'test_batch'))
-        val = _val['data'].astype('float32').reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2) / 255.
+        val = _val['data'].astype('float32').reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2)
         val_labels = np.array(_val['labels'])
         label_dict = unpickle(os.path.join(data_path, 'CIFAR_10', 'cifar-10-batches-py', 'batches.meta'))
         label_names = label_dict['label_names']
@@ -201,10 +204,10 @@ def load_data(dataset, data_path):
             tar.extractall(os.path.join(data_path, 'CIFAR_100'))
             tar.close()
         _train = unpickle(os.path.join(data_path, 'CIFAR_100', 'cifar-100-python', 'train'))
-        train = _train['data'].astype('float32').reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2) / 255.
+        train = _train['data'].astype('float32').reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2)
         train_labels = np.array(_train['fine_labels'])
         _val = unpickle(os.path.join(data_path, 'CIFAR_100', 'cifar-100-python', 'test'))
-        val = _val['data'].astype('float32').reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2) / 255.
+        val = _val['data'].astype('float32').reshape((-1, 3, 32, 32)).swapaxes(1, 3).swapaxes(1, 2)
         val_labels = np.array(_val['fine_labels'])
         label_dict = unpickle(os.path.join(data_path, 'CIFAR_100', 'cifar-100-python', 'meta'))
         label_names = label_dict['fine_label_names']
@@ -216,13 +219,13 @@ def load_data(dataset, data_path):
             print 'Downloading SVHN train...'
             urllib.urlretrieve('http://ufldl.stanford.edu/housenumbers/train_32x32.mat', os.path.join(data_path, 'SVHN', 'train_32x32.mat'))
         data_labels = loadmat(os.path.join(data_path, 'SVHN', 'train_32x32.mat'))
-        train = data_labels['X'].swapaxes(2, 3).swapaxes(1, 2).swapaxes(0, 1).astype('float32') / 255.
+        train = data_labels['X'].swapaxes(2, 3).swapaxes(1, 2).swapaxes(0, 1).astype('float32')
         train_labels = data_labels['y'].reshape(-1).astype('float32')
         if not os.path.exists(os.path.join(data_path, 'SVHN', 'test_32x32.mat')):
             print 'Downloading SVHN test...'
             urllib.urlretrieve('http://ufldl.stanford.edu/housenumbers/test_32x32.mat', os.path.join(data_path, 'SVHN', 'test_32x32.mat'))
         data_labels = loadmat(os.path.join(data_path, 'SVHN', 'test_32x32.mat'))
-        val = data_labels['X'].swapaxes(2, 3).swapaxes(1, 2).swapaxes(0, 1).astype('float32') / 255.
+        val = data_labels['X'].swapaxes(2, 3).swapaxes(1, 2).swapaxes(0, 1).astype('float32')
         val_labels = data_labels['y'].reshape(-1).astype('float32')
 
         label_names = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
