@@ -1,6 +1,7 @@
 # training set-up
 train_config = {
     'dataset': 'CIFAR_10',
+    'data_path': '/home/joe/Datasets',
     'output_distribution': 'gaussian',
     'batch_size': 128,
     'n_samples': 10,
@@ -16,7 +17,8 @@ train_config = {
     'cuda_device': 1,
     'display_iter': 30,
     'eval_iter': 2000,
-    'resume_experiment': None
+    'resume_experiment': None,
+    'log_root': '/home/joe/Research/iterative_inference_logs/'
 }
 
 # model architecture

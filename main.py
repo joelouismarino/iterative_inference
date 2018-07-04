@@ -8,7 +8,7 @@ from util.logs import init_log, save_checkpoint
 import time
 
 
-log_root = '/home/joe/Research/iterative_inference_logs/'
+log_root = train_config['log_root']
 log_path, log_dir = init_log(log_root, train_config)
 print 'Experiment: ' + log_dir
 
@@ -16,7 +16,7 @@ global vis
 vis, handle_dict = init_plot(train_config, arch, env=log_dir)
 
 # load data, labels
-data_path = '/home/joe/Datasets'
+data_path = train_config['data_path']
 train_loader, val_loader, label_names = load_data(train_config['dataset'], data_path, train_config['batch_size'],
                                                   cuda_device=train_config['cuda_device'])
 
@@ -26,7 +26,7 @@ model = get_model(train_config, arch, train_loader)
 # get optimizers
 (enc_opt, enc_scheduler), (dec_opt, dec_scheduler), start_epoch = get_optimizers(train_config, arch, model)
 
-for epoch in range(start_epoch+1, 150):
+for epoch in range(start_epoch+1, 1500):
     print 'Epoch: ' + str(epoch+1)
     # train
     tic = time.time()
