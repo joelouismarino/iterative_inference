@@ -1,4 +1,3 @@
-from cfg.config import train_config, arch
 from lib.models import get_model
 from util.data.load_data import load_data
 from util.optimizers import get_optimizers
@@ -6,6 +5,9 @@ from util.train_val import train, run
 from util.plotting import init_plot, save_env
 from util.logs import init_log, save_checkpoint
 import time
+
+# Load the configuration dictionaries
+from cfg.config import train_config, arch
 
 
 log_root = train_config['log_root']

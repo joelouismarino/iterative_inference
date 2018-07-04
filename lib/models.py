@@ -4,7 +4,7 @@ import torch.optim as opt
 import numpy as np
 
 from util.logs import load_model_checkpoint
-from distributions import DiagonalGaussian, Bernoulli
+from distributions import DiagonalGaussian, Bernoulli, Multinomial
 from modules import Dense, MultiLayerPerceptron, DenseGaussianVariable, DenseLatentLevel, RecurrentLatentLevel
 
 
@@ -43,10 +43,6 @@ class DenseLatentVariableModel(object):
         self.output_decoder = self.output_dist = self.mean_output = self.log_var_output = self.trainable_log_var = None
         self.state_optimizer = None
         self.__construct__(arch)
-
-        self.whitening_matrix = self.inverse_whitening_matrix = self.data_mean = None
-        if arch['whiten_input']:
-            self.whitening_matrix, self.inverse_whitening_matrix, self.data_mean = self.calculate_whitening_matrix(data_loader)
 
         self._cuda_device = None
         if train_config['cuda_device'] is not None:
@@ -119,8 +115,7 @@ class DenseLatentVariableModel(object):
             self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity='linear', weight_norm=arch['weight_norm_dec'])
         elif self.output_distribution == 'gaussian':
             self.output_dist = DiagonalGaussian(self.input_size, None, None)
-            non_lin = 'linear' if arch['whiten_input'] else 'sigmoid'
-            self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity=non_lin, weight_norm=arch['weight_norm_dec'])
+            self.mean_output = Dense(arch['n_units_dec'][0], self.input_size, non_linearity='sigmoid', weight_norm=arch['weight_norm_dec'])
             if self.constant_variances:
                 if arch['single_output_variance']:
                     self.trainable_log_var = Variable(torch.zeros(1), requires_grad=True)
@@ -249,36 +244,14 @@ class DenseLatentVariableModel(object):
                 decoder_size += (arch['n_latent'][level] + arch['n_det_dec'][level])
         return decoder_size
 
-    def calculate_whitening_matrix(self, data_loader, n_examples=50000):
-        """Calculates and returns the whitening matrix for the training data."""
-        print 'Calculating whitening matrix...'
-        n = 0
-        batch_size = next(iter(data_loader))[0].size()[0]
-        train_data = torch.zeros(batch_size * int(n_examples / batch_size), self.input_size)
-        for batch, _ in data_loader:
-            if n >= train_data.shape[0]:
-                break
-            train_data[n:n+batch.shape[0]] = batch.view(batch_size, -1)
-            n += batch_size
-        train_data = train_data.numpy()
-        data_mean = np.mean(train_data, axis=0)
-        train_centered = train_data - data_mean
-        Sigma = np.dot(train_centered.T, train_centered) / train_centered.shape[0]
-        U, Lambda, _ = np.linalg.svd(Sigma)
-        ZCA_matrix = np.dot(U, np.dot(np.diag(1.0/np.sqrt(Lambda + 1e-5)), U.T))
-        ZCA_matrix_inv = np.linalg.inv(ZCA_matrix)
-        print 'Whitening matrix calculated.'
-        return Variable(torch.from_numpy(ZCA_matrix)), Variable(torch.from_numpy(ZCA_matrix_inv)), Variable(torch.from_numpy(data_mean))
-
     def process_input(self, input):
         """
         Whitens or scales the input.
         :param input: the input data
         """
-        if self.whitening_matrix is not None:
-            return torch.mm(input - self.data_mean, self.whitening_matrix)
-        else:
-            return input / 255.
+        if self.output_distribution == 'multinomial':
+            return input
+        return input / 255.
 
     def process_output(self, mean):
         """
@@ -286,10 +259,9 @@ class DenseLatentVariableModel(object):
         :param mean: the mean of the output distribution
         :return the unnormalized or unscaled mean
         """
-        if self.whitening_matrix is not None:
-            return self.data_mean + torch.mm(mean, self.inverse_whitening_matrix)
-        else:
-            return 255. * mean
+        if self.output_distribution == 'multinomial':
+            return mean
+        return 255. * mean
 
     def get_input_encoding(self, input):
         """
@@ -301,7 +273,7 @@ class DenseLatentVariableModel(object):
             assert self.output_dist is not None, 'Cannot encode error. Output distribution is None.'
         encoding = None
         if 'posterior' in self.encoding_form:
-            encoding = input if self.whitening_matrix is not None else input - 0.5
+            encoding = input - 0.5
         if 'bottom_error' in self.encoding_form:
             error = input - self.output_dist.mean.detach().mean(dim=1)
             encoding = error if encoding is None else torch.cat((encoding, error), dim=1)
@@ -376,7 +348,6 @@ class DenseLatentVariableModel(object):
 
         h = h.view(-1, h.size()[2])
         h = self.output_decoder(h)
-        # self.output_dist.mean = self.process_output(self.mean_output(h)) / 255.
         mean_out = self.mean_output(h)
         mean_out = mean_out.view(self.batch_size, n_samples, self.input_size)
         self.output_dist.mean = mean_out
@@ -392,8 +363,9 @@ class DenseLatentVariableModel(object):
                 log_var_out = log_var_out.view(self.batch_size, n_samples, self.input_size)
                 self.output_dist.log_var = torch.clamp(log_var_out, -7., 15)
 
-        self.reconstruction = 255. * self.output_dist.mean[:, 0, :]
-        # self.reconstruction = self.process_output(self.output_dist.mean)
+        self.reconstruction = self.output_dist.mean[:, 0, :]
+        if self.output_distribution in ['gaussian', 'bernoulli']:
+            self.reconstruction = self.reconstruction * 255.
         return self.output_dist
 
     def kl_divergences(self, averaged=False):
