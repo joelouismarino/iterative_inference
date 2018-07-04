@@ -146,7 +146,10 @@ class FullyConnectedModel(Model):
         """
         encoding = []
         if 'observation' in self.inference_procedure:
-            encoding.append(observation)
+            if type(self.output_dist) == Normal or type(self.output_dist) == Bernoulli:
+                encoding.append(observation - 0.5)
+            else:
+                encoding.append(observation)
         if 'gradient' in self.inference_procedure:
             pass
         if 'error' in self.inference_procedure:

@@ -25,10 +25,11 @@ model.cuda(run_config['cuda_device'])
 optimizers, schedulers = load_opt_sched(train_config, model)
 
 # train, validate, step
+print('Training...')
+epoch = 0
 while True:
-    print('Training...')
+    print('Epoch: ' + str(epoch))
     out = train(model, train_data, optimizers)
-    import ipdb; ipdb.set_trace()
     if run_config['log']:
         logger.log(out, 'Train')
     if run_config['plot']:
@@ -42,3 +43,4 @@ while True:
         plotter.save()
 
     schedulers[0].step(); schedulers[1].step()
+    epoch += 1

@@ -1,3 +1,4 @@
+import numpy as np
 import torch.nn as nn
 from lib.distributions import Normal
 
@@ -88,10 +89,10 @@ class Model(nn.Module):
         if len(observation.shape) == 2:
             observation = observation.unsqueeze(1).repeat(1, n_samples, 1)
 
-        if self.output_interval is not None:
-            observation = (observation, observation + self.output_interval)
+        # if self.output_interval is not None:
+        #     observation = (observation, observation + self.output_interval)
 
-        log_prob = self.output_dist.log_prob(value=observation)
+        log_prob = self.output_dist.log_prob(value=observation) - np.log(256.)
 
         # sum over the spatial dimension
         log_prob = log_prob.sum(dim=2)

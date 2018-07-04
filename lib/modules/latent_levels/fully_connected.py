@@ -3,7 +3,7 @@ import torch.nn as nn
 from latent_level import LatentLevel
 from lib.modules.networks import FullyConnectedNetwork
 from lib.modules.latent_variables import FullyConnectedLatentVariable
-from lib.modules.misc import LayerNorm
+from lib.modules.misc import LayerNorm, BatchNorm
 
 
 class FullyConnectedLatentLevel(LatentLevel):
@@ -50,10 +50,12 @@ class FullyConnectedLatentLevel(LatentLevel):
         if 'gradient' in self.inference_procedure:
             if in_out == 'in':
                 grads = self.latent.approx_posterior_gradients()
-                grads = torch.cat([LayerNorm()(grad) for grad in grads], dim=1)
+                # grads = torch.cat([LayerNorm()(grad) for grad in grads], dim=1)
+                grads = torch.cat([BatchNorm()(grad) for grad in grads], dim=1)
                 encoding.append(grads)
                 params = self.latent.approx_posterior_parameters()
-                params = torch.cat([LayerNorm()(param) for param in params], dim=1)
+                # params = torch.cat([LayerNorm()(param) for param in params], dim=1)
+                params = torch.cat(params, dim=1)
                 encoding.append(params)
         if 'error' in self.inference_procedure:
             error = self.latent.error()

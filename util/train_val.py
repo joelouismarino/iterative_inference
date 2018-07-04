@@ -43,7 +43,7 @@ def run(model, data, optimizers=None):
         total_cll[batch_ind*batch_size:(batch_ind+1)*batch_size, 0]  = cll.detach().cpu().numpy()
         total_kl[batch_ind*batch_size:(batch_ind+1)*batch_size, 0]   = sum(kl).detach().cpu().numpy()
         (-elbo.mean()).backward(retain_graph=True)
-        print(str(float(elbo.mean().detach().cpu().numpy())))
+        # print(str(float(elbo.mean().detach().cpu().numpy())))
 
         for inf_it in range(n_inf_iter):
 
@@ -59,7 +59,7 @@ def run(model, data, optimizers=None):
             total_cll[batch_ind*batch_size:(batch_ind+1)*batch_size, inf_it+1]  = cll.detach().cpu().numpy()
             total_kl[batch_ind*batch_size:(batch_ind+1)*batch_size, inf_it+1]   = sum(kl).detach().cpu().numpy()
             (-elbo.mean()).backward(retain_graph=True)
-            print(str(float(elbo.mean().detach().cpu().numpy())))
+            # print(str(float(elbo.mean().detach().cpu().numpy())))
 
         if optimizers:
             for param in model.inference_parameters():

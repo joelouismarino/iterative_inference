@@ -10,8 +10,9 @@ def plot_line(vis, Y, X=None, legend=None, win=None, title='', xlabel='', ylabel
 
 
 def update_trace(vis, Y, X, win, name):
-    """Wraps visdom's updateTrace function."""
-    vis.updateTrace(X, Y, win=win, name=name)
+    # """Wraps visdom's updateTrace function."""
+    # vis.updateTrace(X, Y, win=win, name=name)
+    vis.line(Y, X, win=win, name=name, update='append')
 
 
 def plot_images(vis, imgs, caption=''):

@@ -109,17 +109,17 @@ class Logger(object):
         model.load_state_dict(model_state_dict)
         return model
 
-    def _set_best_epoch(self, free_energy):
+    def _set_best_epoch(self, elbo):
         """
-        Sets the self._best_epoch flag by comparing current (val) free energy
+        Sets the self._best_epoch flag by comparing current (val) ELBO
         with logged values. If the current epoch is the best performance, the
         flag is set to True, which prompts the current model to be logged.
 
         Args:
-            free energy (ndarray): numpy array containing (val) free energy
+            elbo (ndarray): numpy array containing current (val) ELBO
         """
-        path = os.path.join(self.log_path, 'metrics', 'val' + '_free_energy.p')
-        self._best_epoch = best_performance(free_energy, path)
+        path = os.path.join(self.log_path, 'metrics', 'val' + '_elbo.p')
+        self._best_epoch = best_performance(elbo, path)
 
     def log(self, out_dict, train_val):
         """
@@ -130,14 +130,14 @@ class Logger(object):
             train_val (str): determines whether results are from training or validation
         """
         train_val = train_val.lower()
-        update_metric(os.path.join(self.log_path, 'metrics', train_val + '_free_energy.p'),
-                      (self.epoch, out_dict['free_energy']))
-        update_metric(os.path.join(self.log_path, 'metrics', train_val + '_cond_log_like.p'),
-                      (self.epoch, out_dict['cond_log_like']))
-        update_metric(os.path.join(self.log_path, 'metrics', train_val + '_kl_div.p'),
-                      (self.epoch, out_dict['kl_div']))
+        update_metric(os.path.join(self.log_path, 'metrics', train_val + '_elbo.p'),
+                      (self.epoch, out_dict['elbo']))
+        update_metric(os.path.join(self.log_path, 'metrics', train_val + '_cll.p'),
+                      (self.epoch, out_dict['cll']))
+        update_metric(os.path.join(self.log_path, 'metrics', train_val + '_kl.p'),
+                      (self.epoch, out_dict['kl']))
         if train_val == 'val':
-            self._set_best_epoch(out_dict['free_energy'])
+            self._set_best_epoch(out_dict['elbo'][:, -1].mean())
 
     def step(self):
         self.epoch += 1

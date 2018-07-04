@@ -73,6 +73,8 @@ class FullyConnectedLatentVariable(LatentVariable):
         self.approx_post.mean.retain_grad()
         self.approx_post.log_var.retain_grad()
 
+        return self.approx_post.sample(1, resample=True).mean(dim=1)
+
     def generate(self, input, gen, n_samples):
         """
         Method to generate, i.e. run the model forward.

@@ -13,7 +13,6 @@ def set_gpu_recursive(var, gpu_id):
                 pass
     return var
 
-
 def get_last_epoch(path):
     last_epoch = 0
     for r, d, f in os.walk(os.path.join(path, 'checkpoints')):
@@ -24,7 +23,6 @@ def get_last_epoch(path):
                     last_epoch = epoch
     return last_epoch
 
-
 def update_metric(file_name, value):
     if os.path.exists(file_name):
         metric = pickle.load(open(file_name, 'r'))
@@ -33,16 +31,10 @@ def update_metric(file_name, value):
     else:
         pickle.dump([value], open(file_name, 'w'))
 
-
-def best_performance(free_energy, path):
-    # current performance
-    fe = free_energy[-1].sum()
-
-    # logged performance
+def best_performance(current_metric, path):
+    # load logged performance and compare
     metric = pickle.load(open(path, 'r'))
-    metric = [m[1][-1].sum() for m in metric]
-
-    # compare
-    if fe <= min(metric):
+    metric = [m[1][:, -1].mean() for m in metric]
+    if current_metric <= min(metric):
         return True
     return False
