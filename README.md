@@ -17,13 +17,15 @@ To enter the environment, run:
 ```
 $ source activate it_inf
 ```
-Within the environment, install PyTorch by visiting the list of versions [here](https://pytorch.org/previous-versions/), and grabbing version `0.3.0.post4` for your version of CUDA (`8.0`, `9.0`, `9.1`, etc.). To install PyTorch without CUDA, you can run:
-```
-$ conda install pytorch=0.3.0.post4 -c soumith
-```
+Within the environment, install PyTorch by visiting the list of versions [here](https://pytorch.org/previous-versions/), and grabbing version `0.3.0.post4` for your version of CUDA (`8.0`, `9.0`, `9.1`, etc.). Note that the code requires CUDA. Be sure to also install torchvision.
+
 To install vidsom, run
 ```
 $ pip install visdom==0.1.7
+```
+You will also need to install dill, a serialization package, and scipy:
+```
+$ pip install dill scipy
 ```
 To exit the environment, run:
 ```

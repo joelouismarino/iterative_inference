@@ -1,7 +1,7 @@
 import visdom
 import numpy as np
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
+# from sklearn.decomposition import PCA
+# from sklearn.manifold import TSNE
 
 global vis
 
@@ -169,25 +169,25 @@ def plot_scatter(X, Y=None, legend=None, title='', xlabel='', ylabel='', markers
     return win
 
 
-def plot_pca(data, labels=None, n_dims=3, title='', legend=None):
-    """PCA visualization of high-dimensional state data."""
-    assert n_dims in [2, 3], 'n_dims must be 2 or 3'
-    data = data.reshape((-1, np.prod(data.shape[1:])))
-    pca = PCA(n_components=n_dims).fit(data)
-    pca_data = pca.transform(data)
-    plot_scatter(pca_data, labels, legend=legend, title=title)
+# def plot_pca(data, labels=None, n_dims=3, title='', legend=None):
+#     """PCA visualization of high-dimensional state data."""
+#     assert n_dims in [2, 3], 'n_dims must be 2 or 3'
+#     data = data.reshape((-1, np.prod(data.shape[1:])))
+#     pca = PCA(n_components=n_dims).fit(data)
+#     pca_data = pca.transform(data)
+#     plot_scatter(pca_data, labels, legend=legend, title=title)
 
 
-def plot_tsne(data, labels=None, n_dims=3, title='', legend=None):
-    """T-SNE visualization of high-dimensional state data."""
-    assert n_dims in [2, 3], 'n_dims must be 2 or 3'
-    data = data.reshape((-1, np.prod(data.shape[1:])))
-    if data.shape[1] > 100:
-        pca = PCA(n_components=100).fit(data)
-        data = pca.transform(data)
-    tsne = TSNE(n_components=n_dims)
-    tsne_data = tsne.fit_transform(data)
-    plot_scatter(tsne_data, labels, legend=legend, title=title)
+# def plot_tsne(data, labels=None, n_dims=3, title='', legend=None):
+#     """T-SNE visualization of high-dimensional state data."""
+#     assert n_dims in [2, 3], 'n_dims must be 2 or 3'
+#     data = data.reshape((-1, np.prod(data.shape[1:])))
+#     if data.shape[1] > 100:
+#         pca = PCA(n_components=100).fit(data)
+#         data = pca.transform(data)
+#     tsne = TSNE(n_components=n_dims)
+#     tsne_data = tsne.fit_transform(data)
+#     plot_scatter(tsne_data, labels, legend=legend, title=title)
 
 
 def plot_latent_traversal():

@@ -451,7 +451,7 @@ def train(model, train_config, arch, data_loader, epoch, optimizers):
         for _ in range(train_config['encoder_decoder_train_multiple']-1):
             train_on_batch(model, batch, train_config['n_iterations'], optimizers, train_config, arch, train_enc=True, train_dec=False)
 
-        batch_output = train_on_batch(model, batch, train_config['n_iterations'], optimizers  train_config, arch)
+        batch_output = train_on_batch(model, batch, train_config['n_iterations'], optimizers,  train_config, arch)
 
         avg_elbo.append(batch_output['elbo'])
         avg_cond_log_like.append(batch_output['cond_log_like'])
