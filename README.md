@@ -44,6 +44,7 @@ The code can be run from the terminal using command line arguments. The argument
 * `inference_type`,
 * `data_path`, and
 * `log_path`.
+
 For instance, to run a single-level model on MNIST with iterative inference, run:
 ```
 python main.py --dataset 'mnist' --model_type 'single_level' --inference_type 'iterative' --data_path '/path/to/data/' --log_path '/path/to/logs'
