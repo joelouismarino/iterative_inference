@@ -21,15 +21,15 @@ Within the environment, install PyTorch by visiting the list of versions [here](
 
 To install vidsom, run
 ```
-$ pip install visdom==0.1.7
+(it_inf) $ pip install visdom==0.1.7
 ```
 You will also need to install dill, a serialization package, and scipy:
 ```
-$ pip install dill scipy
+(it_inf) $ pip install dill scipy
 ```
 To exit the environment, run:
 ```
-$ source deactivate
+(it_inf) $ source deactivate
 ```
 
 ## Running the Code
