@@ -45,7 +45,7 @@ def log_train(func):
     global log_path
 
     def log_func(model, train_config, arch, data, epoch, optimizers):
-        output_dict = func(model, train_config, data, epoch, optimizers)
+        output_dict = func(model, train_config, arch, data, epoch, optimizers)
         update_metric(os.path.join(log_path, 'metrics', 'train_elbo.p'), (epoch, output_dict['avg_elbo']))
         update_metric(os.path.join(log_path, 'metrics', 'train_cond_log_like.p'), (epoch, output_dict['avg_cond_log_like']))
         for level in range(len(model.levels)):
@@ -60,7 +60,7 @@ def log_vis(func):
     global log_path
 
     def log_func(model, train_config, arch, data_loader, epoch, vis=False, eval=False):
-        output_dict = func(model, train_config, data_loader, vis=vis, eval=eval)
+        output_dict = func(model, train_config, arch, data_loader, vis=vis, eval=eval)
         update_metric(os.path.join(log_path, 'metrics', 'val_elbo.p'), (epoch, np.mean(output_dict['total_elbo'][:, -1], axis=0)))
         update_metric(os.path.join(log_path, 'metrics', 'val_cond_log_like.p'), (epoch, np.mean(output_dict['total_cond_log_like'][:, -1], axis=0)))
         for level in range(len(model.levels)):
