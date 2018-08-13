@@ -26,7 +26,7 @@ arch = {
     'encoder_type': 'inference_model',  # 'em', 'inference_model'
 
     'inference_model_type': 'feedforward',  # 'feedforward', 'recurrent'
-    'encoding_form': ['posterior', 'bottom_error', 'top_error', 'mean', 'log_variance'],
+    'encoding_form': ['posterior', 'bottom_error', 'top_error', 'mean', 'log_var'],
     'variable_update_form': 'highway',
 
     'concat_variables': False,
