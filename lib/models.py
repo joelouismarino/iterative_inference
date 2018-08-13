@@ -538,10 +538,6 @@ class DenseLatentVariableModel(object):
                 self.log_var_output = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
             else:
                 self.log_var_output = self.log_var_output.cuda(device_id)
-        if self.whitening_matrix is not None:
-            self.whitening_matrix = self.whitening_matrix.cuda(device_id)
-            self.inverse_whitening_matrix = self.inverse_whitening_matrix.cuda(device_id)
-            self.data_mean = self.data_mean.cuda(device_id)
 
     def cpu(self):
         """Places the model on the CPU."""
@@ -557,13 +553,3 @@ class DenseLatentVariableModel(object):
                 self.log_var_output = self.trainable_log_var.unsqueeze(0).repeat(self.batch_size, 1)
             else:
                 self.log_var_output = self.log_var_output.cpu()
-        if self.whitening_matrix is not None:
-            self.whitening_matrix = self.whitening_matrix.cpu()
-            self.inverse_whitening_matrix = self.inverse_whitening_matrix.cpu()
-            self.data_mean = self.data_mean.cpu()
-
-
-class ConvLatentVariableModel(object):
-
-    def __init__(self, train_config, arch, data_loader):
-        raise NotImplementedError
