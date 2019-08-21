@@ -1,6 +1,6 @@
 # Iterative Amortized Inference
 
-Code to accompany the paper [Iterative Amortized Inference](http://joelouismarino.github.io/research/icml_2018_paper.pdf) by Marino et al., ICML 2018.
+Code to accompany the paper [Iterative Amortized Inference](https://joelouismarino.github.io/files/papers/2018/iterative_amortized_inference/icml_2018_paper.pdf) by Marino et al., ICML 2018.
 
 
 ## Installation & Set-Up
